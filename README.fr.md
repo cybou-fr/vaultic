@@ -1,39 +1,67 @@
-# Vaultic — Gestionnaire de sauvegardes chiffrées
+# Vaultic — Restic-powered Backup Application
 
-**Vaultic** est une application de bureau multiplateforme, développée en Go et Fyne, qui pilote le moteur officiel **restic**.
+**Vaultic** est une application de sauvegarde native pour Windows, Linux et macOS, construite en **Go + Fyne** à partir des **sources officielles de restic**.
 
-L'interface de cette version est en **français**. Une localisation en anglais est prévue.
+**Ce n'est pas une interface qui lance la commande restic.** Le moteur de restic et l'interface graphique sont compilés dans **un seul exécutable**. Aucun `restic.exe` séparé n'est requis à l'exécution.
 
-Vaultic utilise le format de dépôt standard de restic : vos sauvegardes restent compatibles avec la ligne de commande restic et les autres outils compatibles. Il n'existe pas de format propriétaire Vaultic.
+- **Moteur :** restic v0.19.1, commit épinglé `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`.
+- **Compatibilité :** format de dépôt restic officiel, inchangé.
+- **Langue actuelle :** français. Traduction anglaise prévue.
+- **Licence :** Apache-2.0 pour le code Vaultic, BSD-2-Clause pour les sources restic, BSD-3-Clause pour Fyne.
+- **État :** intégration en développement, pas encore une version de production validée.
 
-## Version actuelle
+## Architecture
 
-**MVP 0.1 : code source expérimental**, sans installateur signé ni validation complète sur toutes les plateformes.
+```text
+Vaultic (exécutable unique)
+├── Interface Fyne (overlay/vaultic_gui.go)
+├── Adaptateur d'affichage des opérations restic
+├── Appels Go natifs à runInit / runBackup / runSnapshots / runRestore / runCheck
+└── Sources officielles de restic (v0.19.1)
+    ├── archiver, repository, restorer
+    ├── crypto, chunker, index
+    └── backends locaux et distants
+```
 
-- Initialiser un dépôt chiffré local ou distant pris en charge par restic.
-- Choisir les dossiers et fichiers à sauvegarder.
-- Afficher la progression et interrompre une opération.
-- Consulter les instantanés et restaurer un instantané dans un dossier vide.
-- Vérifier la structure du dépôt avec `restic check`.
-- Conserver les paramètres non secrets en mode normal ou portable.
-
-Le mot de passe n'est pas enregistré par Vaultic : il reste en mémoire pendant la session et est transmis au processus restic. Conservez-le en lieu sûr, car sa perte rend la restauration impossible.
+La compilation intègre les fichiers Vaultic dans `cmd/restic` du projet restic afin d'accéder aux opérations natives, sans réimplémenter le moteur ni utiliser de sous-processus. Lorsqu'on lance `vaultic` sans arguments, l'interface graphique s'ouvre. Les commandes CLI restic d'origine restent disponibles avec des arguments (par exemple `vaultic version`) pour le diagnostic.
 
 ## Compilation
 
-Prérequis : Go 1.23+, compilateur C, dépendances Fyne et exécutable restic.
+Prérequis : **Go 1.25.10+**, Git, Python 3 et les dépendances graphiques/C de [Fyne](https://docs.fyne.io/started/).
 
 ```bash
-go mod tidy
-go run ./cmd/vaultic
+python3 scripts/assemble.py
 ```
 
-Scripts de compilation : `scripts/build.ps1` (Windows) ou `scripts/build.sh` (Linux/macOS).
+Sur Windows :
 
-Pour les détails de sécurité, les tests et la configuration portable, consultez le [README en anglais](README.md).
+```powershell
+py scripts/assemble.py
+```
 
-## Licence
+Le script récupère restic v0.19.1 depuis son dépôt officiel **pendant la compilation**, vérifie le commit source épinglé, copie le code d'intégration dans son arbre source, ajoute Fyne au module Go, puis génère `dist/vaultic` ou `dist/vaultic.exe`. Les téléchargements n'ont lieu que pendant la compilation.
 
-Vaultic est distribué sous **Apache License 2.0**. Voir [LICENSE](LICENSE), [NOTICE](NOTICE) et [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont nécessaires. Les distributions finales devront être compilées et validées sur chaque système.
 
-Vaultic est un projet indépendant, sans affiliation officielle avec restic ou Fyne.
+## Fonctionnalités initiales
+
+- Initialisation d'un dépôt chiffré compatible restic.
+- Sauvegarde de dossiers et fichiers, avec progression JSON native et annulation.
+- Historique des instantanés.
+- Restauration d'un instantané dans un dossier vide.
+- Vérification de l'intégrité structurelle du dépôt.
+- Préférences non sensibles (sans mot de passe), avec mode portable.
+
+## Sécurité et limites
+
+- Le mot de passe reste en mémoire, il n'est pas enregistré par Vaultic.
+- La sauvegarde refuse un dépôt local situé sous une source sélectionnée.
+- La restauration exige un dossier de destination existant et vide, pour éviter d'écraser des fichiers.
+- Pas encore de planificateur, d'explorateur sélectif d'instantanés, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
+- Les sauvegardes doivent être validées en test avec le CLI officiel avant usage pour des données importantes.
+
+## Licences
+
+Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+English: [README.en.md](README.en.md).

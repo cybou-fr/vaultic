@@ -1,10 +1,16 @@
 Vaultic
 Copyright 2026 Vaultic contributors
 
-This product includes software developed by the Vaultic contributors,
-licensed under the Apache License, Version 2.0. See LICENSE.
+Vaultic's original code (GUI, configuration, build integration) is licensed
+under the Apache License, Version 2.0. See LICENSE.
 
-Vaultic is an independent application. It is not affiliated with, sponsored
-by, endorsed by, or an official client of the restic or Fyne projects.
+Vaultic integrates source code from the restic project at build time.
+restic is Copyright (c) 2014, Alexander Neumann, and contributors.
+Restic's upstream source is licensed under BSD-2-Clause. Its license and
+other third-party licenses remain applicable to the combined binary.
 
-For third-party copyright and license notices, see THIRD_PARTY_NOTICES.md.
+The desktop GUI uses Fyne, licensed under BSD-3-Clause, with notices
+for transitive dependencies required when shipping binaries.
+
+Vaultic is independent and is not an official restic or Fyne project.
+See THIRD_PARTY_NOTICES.md for additional attribution details.

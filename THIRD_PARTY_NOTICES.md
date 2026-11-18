@@ -1,78 +1,26 @@
 # Third-party notices
 
-This file records licenses for Vaultic's **directly referenced** third-party
-components. It is **not** a complete inventory of all Go transitive dependencies.
-Before publishing binary releases, generate and review a complete dependency
-license inventory for the exact release build.
+## restic v0.19.1 (source integration, BSD-2-Clause)
 
-## Fyne v2.8.2 — BSD-3-Clause
+Upstream: https://github.com/restic/restic/tree/v0.19.1
+Pinned upstream commit: `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`
 
-Fyne is linked into the Vaultic GUI.
+**Vaultic embeds the official restic engine from source at build time.**
+The combined executable contains restic code. This is not a subprocess
+integration. Copyright (c) 2014, Alexander Neumann and contributors.
+
+The full BSD-2-Clause terms and disclaimer must be included in binary
+redistributions. Source: https://github.com/restic/restic/blob/v0.19.1/LICENSE
+
+## Fyne v2.8.2 (BSD-3-Clause)
+
 Upstream: https://github.com/fyne-io/fyne/tree/v2.8.2
-License: https://github.com/fyne-io/fyne/blob/v2.8.2/LICENSE
+Source: https://github.com/fyne-io/fyne/blob/v2.8.2/LICENSE
 
-```text
-BSD 3-Clause License
+Fyne is linked into Vaultic; BSD-3-Clause attribution, disclaimer, and
+non-endorsement conditions apply.
 
-Copyright (C) 2018 Fyne.io developers (see AUTHORS)
-All rights reserved.
-
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above copyright
-      notice, this list of conditions and the following disclaimer in the
-      documentation and/or other materials provided with the distribution.
-    * Neither the name of Fyne.io nor the names of its contributors may be
-      used to endorse or promote products derived from this software without
-      specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
-
-## restic — BSD-2-Clause
-
-Vaultic invokes the external `restic` executable. The current source release
-does not bundle it; users install it separately. If distributing `restic`
-alongside Vaultic, retain this notice and check the bundled version's notices.
-Upstream: https://github.com/restic/restic
-License: https://github.com/restic/restic/blob/master/LICENSE
-
-```text
-BSD 2-Clause License
-
-Copyright (c) 2014, Alexander Neumann <alexander@bumpern.de>
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-```
+**Before publishing binaries**, generate a complete inventory of Go direct
+and transitive dependencies from the *assembled* restic + Fyne module and
+bundle the relevant license texts and attribution notices. This file by itself
+is not a complete third-party license bill of materials.

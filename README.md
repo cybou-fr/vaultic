@@ -1,80 +1,67 @@
-# Vaultic (Go + Fyne)
+# Vaultic — Restic-powered Backup Application
 
-A French-first, cross-platform desktop GUI for the **official restic** backup engine. The application does not implement its own repository format. Repositories are compatible with the restic CLI and other compatible tools.
+**Vaultic** est une application de sauvegarde native pour Windows, Linux et macOS, construite en **Go + Fyne** à partir des **sources officielles de restic**.
 
-**MVP 0.1 source release**, not a signed production build.
+**Ce n'est pas une interface qui lance la commande restic.** Le moteur de restic et l'interface graphique sont compilés dans **un seul exécutable**. Aucun `restic.exe` séparé n'est requis à l'exécution.
 
-**Language:** the current desktop UI is in French (`fr-FR`). English localization (`en`) is planned. Technical documentation is maintained in English for international contributors; a [French introduction](README.fr.md) is available. Vaultic is developed in France.
+- **Moteur :** restic v0.19.1, commit épinglé `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`.
+- **Compatibilité :** format de dépôt restic officiel, inchangé.
+- **Langue actuelle :** français. Traduction anglaise prévue.
+- **Licence :** Apache-2.0 pour le code Vaultic, BSD-2-Clause pour les sources restic, BSD-3-Clause pour Fyne.
+- **État :** intégration en développement, pas encore une version de production validée.
 
-Vaultic is licensed under **Apache-2.0**; see [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+## Architecture
 
-## Features
-
-- Configure a repository (local path, removable SSD, or a restic-supported remote repository).
-- Initialize an encrypted repository.
-- Choose folders and files to back up, show backup JSON progress, and cancel operations.
-- List snapshots and restore a chosen snapshot to an **empty** folder.
-- Run a read-only repository consistency check (`restic check`).
-- Save nonsecret paths/config. Keep the password in RAM only, never in settings.
-- Portable settings: keep `portable.flag` next to the executable. Settings are saved next to that executable.
-- Single active operation at a time; no shell interpolation.
-
-## Requirements
-
-- Go 1.23+ (to build); a C compiler and platform graphics headers/libraries for Fyne.
-- restic CLI installed separately (tested interface against docs for restic 0.19.1). https://restic.net/
-- Fyne v2.8.2 (resolved automatically by `go mod download`).
-
-## Build / run
-
-```bash
-go mod tidy
-go run ./cmd/vaultic
-# Linux / macOS desktop:
-./scripts/build.sh
-# Windows PowerShell:
-./scripts/build.ps1
+```text
+Vaultic (exécutable unique)
+├── Interface Fyne (overlay/vaultic_gui.go)
+├── Adaptateur d'affichage des opérations restic
+├── Appels Go natifs à runInit / runBackup / runSnapshots / runRestore / runCheck
+└── Sources officielles de restic (v0.19.1)
+    ├── archiver, repository, restorer
+    ├── crypto, chunker, index
+    └── backends locaux et distants
 ```
 
-You can change the **restic** field in the app to the full path to `restic` / `restic.exe`. If `restic` is on your PATH, leave it as `restic`. For a standalone portable Windows folder, copy `restic.exe` into the same folder and leave the binary field as `restic`; the app auto-detects the adjacent executable. The app deliberately does not auto-download third-party executables.
+La compilation intègre les fichiers Vaultic dans `cmd/restic` du projet restic afin d'accéder aux opérations natives, sans réimplémenter le moteur ni utiliser de sous-processus. Lorsqu'on lance `vaultic` sans arguments, l'interface graphique s'ouvre. Les commandes CLI restic d'origine restent disponibles avec des arguments (par exemple `vaultic version`) pour le diagnostic.
 
-If you put the app on an external SSD, keep `portable.flag` beside its executable. You can type `vault` as a **relative local repository path**, which the app resolves relative to its own executable (useful when the SSD drive letter changes). Select SSD paths for your data and encrypted repository. **Do not put the repository inside a folder being backed up.**
+## Compilation
 
-For macOS signed `.app` packaging and Windows installers, packaging/signing must be done on the target build system. Fyne can also target Android and iOS, but **this MVP does not run restic on mobile**: it invokes a desktop restic executable.
-
-## Testing
+Prérequis : **Go 1.25.10+**, Git, Python 3 et les dépendances graphiques/C de [Fyne](https://docs.fyne.io/started/).
 
 ```bash
-go test ./internal/restic ./internal/settings
+python3 scripts/assemble.py
 ```
 
-The core test suite uses a fake restic command, so it does **not** validate the full backup/restore workflow against an actual repository. For real-world readiness, run an end-to-end test with restic on each target OS and verify restored data.
+Sur Windows :
 
-## Security notes
+```powershell
+py scripts/assemble.py
+```
 
-- Passwords are never written to disk or shell command arguments by the app. The password is transmitted to the restic child process using the standard `RESTIC_PASSWORD` environment variable. Like other child-process environment variables, it may be readable by sufficiently privileged local software. This MVP does not yet use an OS keychain.
-- Restic data is encrypted by restic. Do not lose the repository password; without it, restoration is impossible.
-- Restore is blocked into nonempty folders. Existing files should never be used as a destination in this MVP.
-- `check` examines repository structure; a deeper integrity audit may require `restic check --read-data`.
-- No scheduling, retention rules, repository deletion, pruning, password storage, automatic updates, or cloud-account wizard in v0.1.
-- For remote backends, provide any necessary provider credentials through your normal restic-compatible environment/configuration. Provider credentials are never collected by this GUI.
+Le script récupère restic v0.19.1 depuis son dépôt officiel **pendant la compilation**, vérifie le commit source épinglé, copie le code d'intégration dans son arbre source, ajoute Fyne au module Go, puis génère `dist/vaultic` ou `dist/vaultic.exe`. Les téléchargements n'ont lieu que pendant la compilation.
 
-## Code layout
+Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont nécessaires. Les distributions finales devront être compilées et validées sur chaque système.
 
-- `cmd/vaultic` — Fyne UI
-- `internal/restic` — shell-free restic orchestration and JSON events
-- `internal/settings` — nonsecret portable/application settings
-- `scripts` — local build scripts
+## Fonctionnalités initiales
 
-Vaultic is an independent project, not an official restic product.
+- Initialisation d'un dépôt chiffré compatible restic.
+- Sauvegarde de dossiers et fichiers, avec progression JSON native et annulation.
+- Historique des instantanés.
+- Restauration d'un instantané dans un dossier vide.
+- Vérification de l'intégrité structurelle du dépôt.
+- Préférences non sensibles (sans mot de passe), avec mode portable.
 
-**Development note:** when using `go run`, the executable lives in Go's build cache. Use an absolute repository path when developing; relative paths are intended for a built portable executable.
+## Sécurité et limites
 
-## License and attribution
+- Le mot de passe reste en mémoire, il n'est pas enregistré par Vaultic.
+- La sauvegarde refuse un dépôt local situé sous une source sélectionnée.
+- La restauration exige un dossier de destination existant et vide, pour éviter d'écraser des fichiers.
+- Pas encore de planificateur, d'explorateur sélectif d'instantanés, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
+- Les sauvegardes doivent être validées en test avec le CLI officiel avant usage pour des données importantes.
 
-Vaultic source code is released under Apache License 2.0. Copyright 2026
-Vaultic contributors. This does not change the licenses of restic, Fyne, or
-their dependencies. The bundled legal texts cover only direct components;
-review all transitive Go dependencies before publishing binary distributions.
-For redistributed applications include `LICENSE`, `NOTICE`, and
-`THIRD_PARTY_NOTICES.md`.
+## Licences
+
+Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+English: [README.en.md](README.en.md).
