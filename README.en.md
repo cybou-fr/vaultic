@@ -23,3 +23,12 @@ Binary build distributions include LICENSE.restic and LICENSE.fyne. Third-party 
 
 This policy does **not** prohibit local build scripts or manually executed tests.
 
+## Manual local tests (NO CI)
+
+Vaultic does **not** run automated CI or GitHub Actions. To explicitly run in-process restic integration tests on your own machine:
+
+```bash
+python3 scripts/test-local.py
+```
+
+Windows: `py scripts/test-local.py`. The tests use temporary repositories and never target real user backups.

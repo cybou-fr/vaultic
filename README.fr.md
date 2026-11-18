@@ -76,3 +76,13 @@ Cette règle concerne l'automatisation CI, **pas** les tests manuels ni les scri
 Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 English: [README.en.md](README.en.md).
+
+## Tests locaux manuels (sans CI)
+
+Les tests ne sont **jamais exécutés automatiquement** dans GitHub. Pour tester volontairement le moteur intégré sur votre poste :
+
+```bash
+python3 scripts/test-local.py
+```
+
+Sur Windows : `py scripts/test-local.py`. Ces tests créent des dépôts et des fichiers temporaires ; ils ne doivent pas utiliser de dépôts contenant vos véritables sauvegardes. Ils vérifient notamment l'exploration des instantanés et la restauration sélective par les fonctions Go de restic.

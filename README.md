@@ -79,3 +79,13 @@ Vaultic est un projet indépendant et n'est pas affilié officiellement à resti
 English: [README.en.md](README.en.md).
 
 Les compilations comprennent les textes de licence du moteur restic (\`LICENSE.restic\`) et de Fyne (\`LICENSE.fyne\`). Les licences transitives devront être auditées avant une distribution de production.
+
+## Tests locaux manuels (sans CI)
+
+Les tests ne sont **jamais exécutés automatiquement** dans GitHub. Pour tester volontairement le moteur intégré sur votre poste :
+
+```bash
+python3 scripts/test-local.py
+```
+
+Sur Windows : `py scripts/test-local.py`. Ces tests créent des dépôts et des fichiers temporaires ; ils ne doivent pas utiliser de dépôts contenant vos véritables sauvegardes. Ils vérifient notamment l'exploration des instantanés et la restauration sélective par les fonctions Go de restic.
