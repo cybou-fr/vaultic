@@ -29,7 +29,7 @@ def prepare():
     if head != COMMIT:
         raise RuntimeError(f"Unexpected restic commit: {head}; expected {COMMIT}. Remove {UPSTREAM} and retry.")
     target = UPSTREAM / "cmd" / "restic"
-    for name in ("vaultic_gui.go", "vaultic_settings.go"):
+    for name in ("vaultic_gui.go", "vaultic_settings.go", "vaultic_gui_test.go"):
         shutil.copy2(ROOT / "overlay" / name, target / name)
     main = target / "main.go"
     code = main.read_text(encoding="utf-8")
@@ -54,6 +54,13 @@ def build():
         src = ROOT / name
         if src.exists():
             shutil.copy2(src, out / name)
+    # Preserve upstream license texts in binary distributions.
+    shutil.copy2(UPSTREAM / "LICENSE", out / "LICENSE.restic")
+    fyne_module = subprocess.check_output(
+        ["go", "list", "-m", "-f", "{{.Dir}}", "fyne.io/fyne/v2"],
+        cwd=UPSTREAM, text=True,
+    ).strip()
+    shutil.copy2(Path(fyne_module) / "LICENSE", out / "LICENSE.fyne")
     print("Built:", out / filename)
 
 if __name__ == "__main__":

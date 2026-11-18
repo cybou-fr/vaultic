@@ -65,3 +65,5 @@ Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont néc
 Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 English: [README.en.md](README.en.md).
+
+Les compilations comprennent les textes de licence du moteur restic (\`LICENSE.restic\`) et de Fyne (\`LICENSE.fyne\`). Les licences transitives devront être auditées avant une distribution de production.

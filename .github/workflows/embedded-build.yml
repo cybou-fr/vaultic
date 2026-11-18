@@ -18,10 +18,28 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev
       - name: Build integrated Vaultic binary
         run: python3 scripts/assemble.py
+      - name: Test Vaultic integration safety checks
+        run: cd .vaultic-build/restic && go test ./cmd/restic -run '^TestVaultic' -count=1
       - name: Assert no external restic command is required
         run: |
           test -x dist/vaultic
           ./dist/vaultic version
+      - name: Exercise official restic engine end to end
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe="$PWD/dist/vaultic"
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          mkdir -p source restored
+          printf "Vaultic native restic engine smoke test\\n" > source/example.txt
+          export RESTIC_PASSWORD="vaultic-ci-test-password"
+          "$exe" -r repo init
+          "$exe" -r repo backup source
+          "$exe" -r repo snapshots --json
+          "$exe" -r repo check
+          "$exe" -r repo restore latest --target restored
+          cmp source/example.txt restored/source/example.txt
       - uses: actions/upload-artifact@v4
         with:
           name: vaultic-linux-development
@@ -30,6 +48,8 @@ jobs:
             dist/LICENSE
             dist/NOTICE
             dist/THIRD_PARTY_NOTICES.md
+            dist/LICENSE.restic
+            dist/LICENSE.fyne
 
   windows:
     runs-on: windows-latest
@@ -53,3 +73,5 @@ jobs:
             dist/LICENSE
             dist/NOTICE
             dist/THIRD_PARTY_NOTICES.md
+            dist/LICENSE.restic
+            dist/LICENSE.fyne

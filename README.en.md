@@ -9,3 +9,5 @@ Build with `python3 scripts/assemble.py` (Windows: `py scripts/assemble.py`), re
 Current development state: encrypted repository initialization, backup with native progress, snapshot listing, restore to an empty directory, structural repository checks, portable nonsecret settings. Not yet qualified for production backups or releases.
 
 The repo format, cryptography, deduplication, and backend implementations are supplied by upstream restic unchanged. Vaultic GUI code is Apache-2.0; restic remains BSD-2-Clause; Fyne remains BSD-3-Clause. See [README.md](README.md), [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Binary build distributions include LICENSE.restic and LICENSE.fyne. Third-party transitive dependency attribution must be audited before public production releases.
