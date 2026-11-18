@@ -31,17 +31,17 @@ func main() {
 	selectedSnapshot := -1
 
 	binary := widget.NewEntry()
-	binary.SetPlaceHolder("restic или полный путь к restic.exe")
+	binary.SetPlaceHolder("restic ou chemin complet vers restic.exe")
 	binary.SetText(saved.ResticBinary)
 
 	repo := widget.NewEntry()
-	repo.SetPlaceHolder("Например: E:\\Backup\\restic или /media/ssd/backup")
+	repo.SetPlaceHolder("Ex. : E:\\Backup\\restic ou /media/ssd/backup")
 	repo.SetText(saved.Repository)
 
 	password := widget.NewPasswordEntry()
-	password.SetPlaceHolder("Пароль restic — не сохраняется")
+	password.SetPlaceHolder("Mot de passe restic — non enregistré")
 
-	status := widget.NewLabel("Готов к работе")
+	status := widget.NewLabel("Prêt")
 	status.Wrapping = fyne.TextWrapWord
 	progress := widget.NewProgressBar()
 	progress.SetValue(0)
@@ -68,7 +68,7 @@ func main() {
 			Repository:   strings.TrimSpace(repo.Text),
 			Sources:      append([]string(nil), sources...),
 		}); err != nil {
-			appendLog("Не удалось сохранить настройки: " + err.Error())
+			appendLog("Impossible d'enregistrer les paramètres : " + err.Error())
 		}
 	}
 	currentClient := func() restic.Client {
@@ -81,10 +81,10 @@ func main() {
 
 	var busy atomic.Bool
 	var cancelOp context.CancelFunc
-	cancelButton := widget.NewButton("Остановить", func() {
+	cancelButton := widget.NewButton("Arrêter", func() {
 		if cancelOp != nil {
 			cancelOp()
-			status.SetText("Останавливаем операцию…")
+			status.SetText("Arrêt de l'opération…")
 		}
 	})
 	cancelButton.Disable()
@@ -113,15 +113,15 @@ func main() {
 					if p.PercentDone >= 0 && p.PercentDone <= 1 {
 						progress.SetValue(p.PercentDone)
 					}
-					status.SetText(fmt.Sprintf("Резервное копирование: %.1f%% — %d / %d файлов", 100*p.PercentDone, p.FilesDone, p.TotalFiles))
+					status.SetText(fmt.Sprintf("Sauvegarde : %.1f %% — %d / %d fichiers", 100*p.PercentDone, p.FilesDone, p.TotalFiles))
 				case "summary":
 					progress.SetValue(1)
-					appendLog("Снимок создан: " + p.SnapshotID)
+					appendLog("Instantané créé : " + p.SnapshotID)
 					if p.ErrorCount > 0 {
-						appendLog(fmt.Sprintf("Внимание: %d ошибок при backup", p.ErrorCount))
+						appendLog(fmt.Sprintf("Attention : %d erreurs pendant la sauvegarde", p.ErrorCount))
 					}
 				case "error":
-					appendLog("restic сообщил об ошибке при обработке файла")
+					appendLog("restic a signalé une erreur de traitement d'un fichier")
 				}
 			}
 			if e.Line != "" {
@@ -132,7 +132,7 @@ func main() {
 
 	run := func(name string, fn func(context.Context) error) {
 		if !busy.CompareAndSwap(false, true) {
-			dialog.ShowInformation("Операция выполняется", "Дождитесь завершения текущей операции или остановите её.", w)
+			dialog.ShowInformation("Opération en cours", "Attendez la fin de l'opération en cours ou arrêtez-la.", w)
 			return
 		}
 		save()
@@ -141,7 +141,7 @@ func main() {
 		setBusy(true)
 		progress.SetValue(0)
 		status.SetText(name + "…")
-		appendLog("Начало: " + name)
+		appendLog("Début : " + name)
 		go func() {
 			err := fn(ctx)
 			fyne.Do(func() {
@@ -150,18 +150,18 @@ func main() {
 				busy.Store(false)
 				setBusy(false)
 				if err != nil {
-					status.SetText("Ошибка: " + name)
-					appendLog("Ошибка: " + err.Error())
+					status.SetText("Erreur : " + name)
+					appendLog("Erreur : " + err.Error())
 					dialog.ShowError(err, w)
 					return
 				}
-				status.SetText(name + " — выполнено")
-				appendLog("Завершено: " + name)
+				status.SetText(name + " — terminé")
+				appendLog("Terminé : " + name)
 			})
 		}()
 	}
 
-	browseRepo := widget.NewButton("Обзор…", func() {
+	browseRepo := widget.NewButton("Parcourir…", func() {
 		d := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil {
 				dialog.ShowError(err, w)
@@ -174,13 +174,13 @@ func main() {
 		}, w)
 		d.Show()
 	})
-	initButton := widget.NewButton("Создать хранилище", func() {
+	initButton := widget.NewButton("Initialiser le dépôt", func() {
 		c := currentClient()
-		run("Создание хранилища", func(ctx context.Context) error { return c.Init(ctx, updateEvent) })
+		run("Initialisation du dépôt", func(ctx context.Context) error { return c.Init(ctx, updateEvent) })
 	})
-	versionButton := widget.NewButton("Проверить restic", func() {
+	versionButton := widget.NewButton("Vérifier restic", func() {
 		c := currentClient()
-		run("Проверка restic", func(ctx context.Context) error {
+		run("Vérification de restic", func(ctx context.Context) error {
 			v, err := c.Version(ctx)
 			if err == nil {
 				updateEvent(restic.Event{Line: v})
@@ -200,7 +200,7 @@ func main() {
 	)
 	sourcesList.OnSelected = func(id widget.ListItemID) { selectedSource = id }
 
-	addFolder := widget.NewButton("+ Папка", func() {
+	addFolder := widget.NewButton("+ Dossier", func() {
 		dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil {
 				dialog.ShowError(err, w)
@@ -213,7 +213,7 @@ func main() {
 			}
 		}, w).Show()
 	})
-	addFile := widget.NewButton("+ Файл", func() {
+	addFile := widget.NewButton("+ Fichier", func() {
 		dialog.NewFileOpen(func(file fyne.URIReadCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, w)
@@ -228,7 +228,7 @@ func main() {
 			}
 		}, w).Show()
 	})
-	removeSource := widget.NewButton("Удалить из списка", func() {
+	removeSource := widget.NewButton("Retirer de la liste", func() {
 		if selectedSource < 0 || selectedSource >= len(sources) {
 			return
 		}
@@ -238,17 +238,17 @@ func main() {
 		sourcesList.Refresh()
 		save()
 	})
-	backupButton := widget.NewButton("Начать резервное копирование", func() {
+	backupButton := widget.NewButton("Lancer la sauvegarde", func() {
 		c := currentClient()
 		selected := append([]string(nil), sources...)
-		run("Резервное копирование", func(ctx context.Context) error {
+		run("Sauvegarde", func(ctx context.Context) error {
 			return c.Backup(ctx, selected, updateEvent)
 		})
 	})
 	backupButton.Importance = widget.HighImportance
 
 	sourceSection := container.NewBorder(
-		container.NewVBox(widget.NewLabelWithStyle("Что сохранить", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewVBox(widget.NewLabelWithStyle("Éléments à sauvegarder", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			container.NewHBox(addFolder, addFile, removeSource)),
 		nil, nil, nil, sourcesList,
 	)
@@ -260,23 +260,23 @@ func main() {
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			if id >= 0 && id < len(snapshots) {
 				sn := snapshots[id]
-				label := sn.Time.Local().Format("02.01.2006 15:04") + "  •  " + sn.ShortID + "  •  " + sn.Hostname
+				label := sn.Time.Local().Format("02/01/2006 15:04") + "  •  " + sn.ShortID + "  •  " + sn.Hostname
 				obj.(*widget.Label).SetText(label)
 			}
 		},
 	)
-	snapshotDetails := widget.NewLabel("Выберите снимок, чтобы посмотреть пути и восстановить файлы.")
+	snapshotDetails := widget.NewLabel("Sélectionnez un instantané pour afficher ses chemins et restaurer ses fichiers.")
 	snapshotDetails.Wrapping = fyne.TextWrapWord
 	snapshotList.OnSelected = func(id widget.ListItemID) {
 		selectedSnapshot = id
 		if id >= 0 && id < len(snapshots) {
 			sn := snapshots[id]
-			snapshotDetails.SetText(fmt.Sprintf("Снимок: %s\nКомпьютер: %s\nИсточники:\n%s", sn.ID, sn.Hostname, strings.Join(sn.Paths, "\n")))
+			snapshotDetails.SetText(fmt.Sprintf("Instantané : %s\nOrdinateur : %s\nSources :\n%s", sn.ID, sn.Hostname, strings.Join(sn.Paths, "\n")))
 		}
 	}
-	refreshSnapshots := widget.NewButton("Обновить список", func() {
+	refreshSnapshots := widget.NewButton("Actualiser", func() {
 		c := currentClient()
-		run("Загрузка снимков", func(ctx context.Context) error {
+		run("Chargement des instantanés", func(ctx context.Context) error {
 			list, err := c.Snapshots(ctx)
 			if err != nil {
 				return err
@@ -286,14 +286,14 @@ func main() {
 				selectedSnapshot = -1
 				snapshotList.UnselectAll()
 				snapshotList.Refresh()
-				snapshotDetails.SetText(fmt.Sprintf("Снимков: %d. Выберите снимок для восстановления.", len(list)))
+				snapshotDetails.SetText(fmt.Sprintf("%d instantané(s). Sélectionnez-en un pour le restaurer.", len(list)))
 			})
 			return nil
 		})
 	})
-	restoreButton := widget.NewButton("Восстановить выбранный снимок…", func() {
+	restoreButton := widget.NewButton("Restaurer l'instantané sélectionné…", func() {
 		if selectedSnapshot < 0 || selectedSnapshot >= len(snapshots) {
-			dialog.ShowInformation("Снимок не выбран", "Выберите снимок из списка.", w)
+			dialog.ShowInformation("Aucun instantané sélectionné", "Sélectionnez un instantané dans la liste.", w)
 			return
 		}
 		id := snapshots[selectedSnapshot].ID
@@ -307,67 +307,67 @@ func main() {
 				return
 			}
 			target := uri.Path()
-			dialog.ShowConfirm("Подтвердить восстановление",
-				"Снимок "+id[:min(12, len(id))]+" будет восстановлен в папку:\n"+target+
-					"\n\nПапка должна быть пустой. Существующие файлы не перезаписываются.",
+			dialog.ShowConfirm("Confirmer la restauration",
+				"L'instantané "+id[:min(12, len(id))]+" sera restauré dans le dossier :\n"+target+
+					"\n\nLe dossier doit être vide. Les fichiers existants ne sont pas écrasés.",
 				func(ok bool) {
 					if !ok {
 						return
 					}
-					run("Восстановление", func(ctx context.Context) error { return c.Restore(ctx, id, target, updateEvent) })
+					run("Restauration", func(ctx context.Context) error { return c.Restore(ctx, id, target, updateEvent) })
 				}, w)
 		}, w).Show()
 	})
 	restoreButton.Importance = widget.HighImportance
 
-	checkButton := widget.NewButton("Проверить целостность хранилища", func() {
+	checkButton := widget.NewButton("Vérifier l'intégrité du dépôt", func() {
 		c := currentClient()
-		run("Проверка целостности", func(ctx context.Context) error { return c.Check(ctx, updateEvent) })
+		run("Vérification d'intégrité", func(ctx context.Context) error { return c.Check(ctx, updateEvent) })
 	})
 
 	actionButtons = []*widget.Button{browseRepo, initButton, versionButton, addFolder, addFile, removeSource, backupButton, refreshSnapshots, restoreButton, checkButton}
 
 	credentials := widget.NewForm(
 		widget.NewFormItem("restic", binary),
-		widget.NewFormItem("Хранилище", container.NewBorder(nil, nil, nil, browseRepo, repo)),
-		widget.NewFormItem("Пароль", password),
+		widget.NewFormItem("Dépôt", container.NewBorder(nil, nil, nil, browseRepo, repo)),
+		widget.NewFormItem("Mot de passe", password),
 	)
 	sharedTop := container.NewVBox(
 		widget.NewLabelWithStyle("Vaultic", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		widget.NewLabel("Зашифрованные резервные копии с открытым форматом restic"),
+		widget.NewLabel("Sauvegardes chiffrées au format restic"),
 		credentials,
 		container.NewHBox(versionButton, initButton),
 		widget.NewSeparator(),
 	)
 
 	backupTab := container.NewBorder(
-		widget.NewLabel("Выберите папки или файлы для резервного копирования."),
+		widget.NewLabel("Sélectionnez les dossiers ou fichiers à sauvegarder."),
 		container.NewVBox(widget.NewSeparator(), backupButton), nil, nil,
 		sourceSection,
 	)
 	snapshotsTab := container.NewBorder(
-		container.NewVBox(widget.NewLabel("История снимков"), refreshSnapshots),
+		container.NewVBox(widget.NewLabel("Historique des instantanés"), refreshSnapshots),
 		container.NewVBox(widget.NewSeparator(), snapshotDetails, restoreButton), nil, nil,
 		snapshotList,
 	)
 	verifyTab := container.NewVBox(
-		widget.NewLabelWithStyle("Проверка целостности", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		widget.NewLabel("restic check проверяет структуру хранилища. Эта операция ничего не удаляет."),
+		widget.NewLabelWithStyle("Vérification d'intégrité", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("restic check vérifie la structure du dépôt. Cette opération ne supprime rien."),
 		checkButton,
 		layout.NewSpacer(),
 	)
 	tabs := container.NewAppTabs(
-		container.NewTabItem("Копирование", backupTab),
-		container.NewTabItem("Снимки и восстановление", snapshotsTab),
-		container.NewTabItem("Проверка", verifyTab),
+		container.NewTabItem("Sauvegarde", backupTab),
+		container.NewTabItem("Instantanés et restauration", snapshotsTab),
+		container.NewTabItem("Vérification", verifyTab),
 	)
 	tabs.SetTabLocation(container.TabLocationTop)
 
 	activity := container.NewVBox(
 		widget.NewSeparator(),
-		container.NewHBox(widget.NewLabelWithStyle("Состояние", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), layout.NewSpacer(), cancelButton),
+		container.NewHBox(widget.NewLabelWithStyle("État", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), layout.NewSpacer(), cancelButton),
 		status, progress,
-		widget.NewLabel("Журнал операций"),
+		widget.NewLabel("Journal des opérations"),
 	)
 	bottom := container.NewBorder(activity, nil, nil, nil, container.NewVScroll(logView))
 	split := container.NewVSplit(tabs, bottom)
@@ -376,14 +376,14 @@ func main() {
 	w.SetContent(main)
 	w.SetCloseIntercept(func() {
 		if busy.Load() {
-			dialog.ShowInformation("Идёт операция", "Сначала остановите текущую операцию, чтобы корректно закрыть приложение.", w)
+			dialog.ShowInformation("Opération en cours", "Arrêtez l'opération en cours avant de fermer l'application.", w)
 			return
 		}
 		save()
 		w.SetCloseIntercept(nil)
 		w.Close()
 	})
-	appendLog("Пароль не сохраняется. Укажите путь к restic или установите его в PATH.")
+	appendLog("Le mot de passe n'est pas enregistré. Indiquez le chemin de restic ou ajoutez-le au PATH.")
 	w.ShowAndRun()
 }
 
