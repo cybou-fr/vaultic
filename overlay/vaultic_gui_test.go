@@ -34,3 +34,14 @@ func TestVaulticSourceValid(t *testing.T) {
     got, err := vaulticSourcesForBackup(filepath.Join(root, "repo"), []string{source})
     if err != nil || len(got) != 1 || got[0] != source { t.Fatalf("sources=%v err=%v", got, err) }
 }
+
+func TestVaulticRelativeRepositoryUsesExecutableDirectory(t *testing.T) {
+    exe, err := os.Executable()
+    if err != nil { t.Fatal(err) }
+    got := vaulticResolvedRepository("vault")
+    want := filepath.Join(filepath.Dir(exe), "vault")
+    if got != want { t.Fatalf("resolved repository=%q, want %q",got,want) }
+    if got := vaulticResolvedRepository("s3:bucket/prefix"); got != "s3:bucket/prefix" {
+        t.Fatalf("remote URL must not be rewritten: %q",got)
+    }
+}

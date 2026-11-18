@@ -65,6 +65,18 @@ func vaulticLocalRepository(repo string) bool {
     return !strings.Contains(repo, ":")
 }
 
+// Resolve relative local repositories against the application executable.
+// This keeps a portable SSD installation stable when its drive letter changes.
+func vaulticResolvedRepository(repo string) string {
+    repo = strings.TrimSpace(repo)
+    if repo == "" || !vaulticLocalRepository(repo) || filepath.IsAbs(repo) {
+        return repo
+    }
+    exe, err := os.Executable()
+    if err != nil { return repo }
+    return filepath.Join(filepath.Dir(exe), repo)
+}
+
 func vaulticContained(parent, child string) bool {
     rel, err := filepath.Rel(parent, child)
     return err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))))
@@ -77,7 +89,7 @@ func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
     repoAbs := ""
     if localRepo {
         var err error
-        repoAbs, err = filepath.Abs(repo)
+        repoAbs, err = filepath.Abs(vaulticResolvedRepository(repo))
         if err != nil { return nil, err }
         if real, e := filepath.EvalSymlinks(repoAbs); e == nil { repoAbs = real }
     }
@@ -195,7 +207,7 @@ func vaulticMain() {
         go func(){
             terminal := &vaulticTerminal{line:onOutput,output:io.Discard}
             gopts := global.Options{
-                Repo: repo, Password: password, Backends: all.Backends(),
+                Repo: vaulticResolvedRepository(repo), Password: password, Backends: all.Backends(),
                 Term:terminal, JSON:true, Verbosity:1,
             }
             err := fn(ctx, gopts)
