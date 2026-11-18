@@ -26,6 +26,7 @@ import (
     "github.com/restic/restic/internal/backend/all"
     "github.com/restic/restic/internal/data"
     "github.com/restic/restic/internal/global"
+    "github.com/restic/restic/internal/restorer"
     "github.com/restic/restic/internal/ui"
 )
 
@@ -337,7 +338,7 @@ func vaulticMain() {
                     // Recheck immediately before starting the restoration.
                     run("Restauration",func(ctx context.Context,g global.Options)error{
                         if _,err:=vaulticRestoreTarget(dest);err!=nil{return err}
-                        return runRestore(ctx,RestoreOptions{Target:dest},g,g.Term,[]string{id})
+                        return runRestore(ctx,RestoreOptions{Target:dest, Overwrite:restorer.OverwriteNever},g,g.Term,[]string{id})
                     })
                 },w)
         },w).Show()
