@@ -1,8 +1,10 @@
 # Vaultic (Go + Fyne)
 
-A Russian-language, cross-platform desktop GUI for the **official restic** backup engine. The application does not implement its own repository format. Repositories are compatible with the restic CLI and other compatible tools.
+A French-first, cross-platform desktop GUI for the **official restic** backup engine. The application does not implement its own repository format. Repositories are compatible with the restic CLI and other compatible tools.
 
 **MVP 0.1 source release**, not a signed production build.
+
+**Language:** the current desktop UI is in French (`fr-FR`). English localization (`en`) is planned. Technical documentation is maintained in English for international contributors; a [French introduction](README.fr.md) is available. Vaultic is developed in France.
 
 Vaultic is licensed under **Apache-2.0**; see [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
