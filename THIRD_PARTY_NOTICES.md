@@ -1,26 +1,29 @@
 # Third-party notices
 
-## restic v0.19.1 (source integration, BSD-2-Clause)
+## Official restic v0.19.1 — BSD-2-Clause
 
-Upstream: https://github.com/restic/restic/tree/v0.19.1
-Pinned upstream commit: `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`
+Original code from https://github.com/restic/restic/tree/v0.19.1,
+commit `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`.
 
-**Vaultic embeds the official restic engine from source at build time.**
-The combined executable contains restic code. This is not a subprocess
-integration. Copyright (c) 2014, Alexander Neumann and contributors.
+The Go engine, CLI and original Go test source are present under
+`internal/` and `cmd/restic/`, and build directly from this repository.
+This is not a wrapper and does not require a restic executable at runtime.
 
-The full BSD-2-Clause terms and disclaimer must be included in binary
-redistributions. Source: https://github.com/restic/restic/blob/v0.19.1/LICENSE
+The **original BSD-2-Clause terms are preserved in [LICENSE.restic](LICENSE.restic)**.
+Copyright (c) 2014, Alexander Neumann, and contributors.
 
-## Fyne v2.8.2 (BSD-3-Clause)
+## Fyne v2.8.2 — BSD-3-Clause
 
 Upstream: https://github.com/fyne-io/fyne/tree/v2.8.2
-Source: https://github.com/fyne-io/fyne/blob/v2.8.2/LICENSE
+License: https://github.com/fyne-io/fyne/blob/v2.8.2/LICENSE
 
-Fyne is linked into Vaultic; BSD-3-Clause attribution, disclaimer, and
-non-endorsement conditions apply.
+Fyne is a Go module dependency linked into Vaultic. Manual build scripts
+copy Fyne's LICENSE to the binary distribution folder.
 
-**Before publishing binaries**, generate a complete inventory of Go direct
-and transitive dependencies from the *assembled* restic + Fyne module and
-bundle the relevant license texts and attribution notices. This file by itself
-is not a complete third-party license bill of materials.
+## Dependency audit required before production binaries
+
+This is not yet a comprehensive inventory of the transitive Go modules
+included in release artifacts. Before public releases, review and ship
+all relevant third-party notices and license texts.
+
+Vaultic's own contributions remain under Apache License 2.0.

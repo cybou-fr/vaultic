@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Run Vaultic's in-process restic tests manually. NO CI, NO automation.
+"""Opt-in, local-only Vaultic integration tests. NO CI.
 
-Requires Git, Python, Go 1.25.10+ and Fyne native build dependencies.
-Tests use local temporary restic repositories; never use a user's repository.
+The tests use disposable temporary repositories. Never run against user data.
 """
-from assemble import UPSTREAM, prepare, run
+from pathlib import Path
+import subprocess
+
+ROOT = Path(__file__).resolve().parent.parent
 
 if __name__ == "__main__":
-    prepare()
-    run("go", "test", "./cmd/restic", "-run", "^TestVaultic", "-count=1", "-v", cwd=UPSTREAM)
+    if not (ROOT / "cmd/restic/vaultic_gui_test.go").is_file():
+        raise RuntimeError("Full Vaultic source files missing")
+    subprocess.run(
+        ["go", "test", "./cmd/restic", "-run", "^TestVaultic", "-count=1", "-v"],
+        cwd=ROOT, check=True,
+    )

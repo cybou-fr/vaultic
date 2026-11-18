@@ -1,88 +1,76 @@
-# Vaultic — Restic-powered Backup Application
+# Vaultic — Sauvegardes chiffrées, moteur restic intégré
 
-**Vaultic** est une application de sauvegarde native pour Windows, Linux et macOS, construite en **Go + Fyne** à partir des **sources officielles de restic**.
+**Vaultic** est une application de sauvegarde native, développée en Go et Fyne pour Windows, Linux et macOS. Le code du moteur officiel **restic v0.19.1** est conservé directement dans ce dépôt, aux côtés du code de l'interface.
 
-**Ce n'est pas une interface qui lance la commande restic.** Le moteur de restic et l'interface graphique sont compilés dans **un seul exécutable**. Aucun `restic.exe` séparé n'est requis à l'exécution.
+**Pas de programme restic externe. Pas de téléchargement du code source restic pendant la compilation.**
 
-- **Moteur :** restic v0.19.1, commit épinglé `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`.
-- **Compatibilité :** format de dépôt restic officiel, inchangé.
-- **Langue actuelle :** français. Traduction anglaise prévue.
-- **Licence :** Apache-2.0 pour le code Vaultic, BSD-2-Clause pour les sources restic, BSD-3-Clause pour Fyne.
-- **État :** intégration en développement, pas encore une version de production validée.
-
-## Architecture
+## Code source dans ce dépôt
 
 ```text
-Vaultic (exécutable unique)
-├── Interface Fyne (overlay/vaultic_gui.go)
-├── Adaptateur d'affichage des opérations restic
-├── Appels Go natifs à runInit / runBackup / runSnapshots / runRestore / runCheck
-└── Sources officielles de restic (v0.19.1)
-    ├── archiver, repository, restorer
-    ├── crypto, chunker, index
-    └── backends locaux et distants
+go.mod / go.sum                   Module Go complet (chemin d'import restic conservé)
+cmd/restic/main.go               Point d'entrée du binaire Vaultic et commandes restic
+cmd/restic/vaultic_*.go          Interface Vaultic, restauration ciblée, tests
+cmd/restic/cmd_*.go              Fonctionnalités d'origine restic
+internal/                        Moteur original restic : chiffrement, dépôts, archivage
+scripts/build.py                Compilation locale du code présent dans le dépôt
+scripts/test-local.py           Tests locaux lancés volontairement
+LICENSE                         Licence Apache-2.0 du code Vaultic
+LICENSE.restic                  Licence BSD-2-Clause du code restic
+NOTICE / THIRD_PARTY_NOTICES.md Mentions légales
 ```
 
-La compilation intègre les fichiers Vaultic dans `cmd/restic` du projet restic afin d'accéder aux opérations natives, sans réimplémenter le moteur ni utiliser de sous-processus. Lorsqu'on lance `vaultic` sans arguments, l'interface graphique s'ouvre. Les commandes CLI restic d'origine restent disponibles avec des arguments (par exemple `vaultic version`) pour le diagnostic.
+Le code du moteur reprend la version officielle **restic v0.19.1** (commit `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`). Ses chemins d'import `github.com/restic/restic` sont conservés pour ne pas réécrire artificiellement ses packages internes. **Cela ne signifie pas que le moteur est téléchargé : tous les packages internes sont déjà présents dans ce dépôt.**
 
-## Compilation
+L'interface est en **français**. Une traduction anglaise est prévue.
 
-Prérequis : **Go 1.25.10+**, Git, Python 3 et les dépendances graphiques/C de [Fyne](https://docs.fyne.io/started/).
+## Compilation locale
+
+Prérequis : Go **1.25.10+**, Python 3 et les bibliothèques natives/C requises par [Fyne](https://docs.fyne.io/started/).
 
 ```bash
-python3 scripts/assemble.py
+python3 scripts/build.py
 ```
 
 Sur Windows :
 
 ```powershell
-py scripts/assemble.py
+py scripts/build.py
 ```
 
-Le script récupère restic v0.19.1 depuis son dépôt officiel **pendant la compilation**, vérifie le commit source épinglé, copie le code d'intégration dans son arbre source, ajoute Fyne au module Go, puis génère `dist/vaultic` ou `dist/vaultic.exe`. Les téléchargements n'ont lieu que pendant la compilation.
+Il est également possible de compiler directement :
 
-Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont nécessaires. Les distributions finales devront être compilées et validées sur chaque système.
+```bash
+go mod tidy
+go build -o vaultic ./cmd/restic
+```
 
-## Fonctionnalités initiales
+Les commandes `go mod tidy` / `go build` peuvent télécharger les **dépendances Go tierces** (dont Fyne), comme dans tout projet Go. **Elles ne clonent pas restic**, dont les sources sont intégrées. Un lancement sans argument ouvre le GUI ; des arguments utilisent les commandes historiques restic (`vaultic version`, par exemple).
 
-- Initialisation d'un dépôt chiffré compatible restic.
-- Sauvegarde de dossiers et fichiers, avec progression JSON native et annulation.
-- Historique des instantanés.
-- Restauration d'un instantané dans un dossier vide.
-- Vérification de l'intégrité structurelle du dépôt.
-- Préférences non sensibles (sans mot de passe), avec mode portable.
+## Fonctionnalités en développement
 
-## Sécurité et limites
+- Dépôts chiffrés compatibles avec le format restic, local et distant.
+- Sauvegarde et restauration depuis le moteur Go intégré.
+- Historique et navigation dans les fichiers des instantanés.
+- Restauration sélective d'un fichier ou d'un dossier, destination vide, sans écrasement.
+- Vérification de dépôt, progression et interruption d'opérations.
+- Préférences non secrètes, mode portable sur disque externe.
 
-- Le mot de passe reste en mémoire, il n'est pas enregistré par Vaultic.
-- La sauvegarde refuse un dépôt local situé sous une source sélectionnée.
-- La restauration exige un dossier de destination existant et vide, pour éviter d'écraser des fichiers.
-- Pas encore de planificateur, d'explorateur sélectif d'instantanés, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
-- Les sauvegardes doivent être validées en test avec le CLI officiel avant usage pour des données importantes.
+**État : version de développement**, non homologuée pour l'usage de sauvegardes irremplaçables. Les exécutables doivent être testés manuellement sur chaque OS avant publication.
 
-## Politique de développement — CI interdite
-
-**Aucune intégration continue (CI) ni automatisation GitHub Actions n'est autorisée pour Vaultic.**
-
-- Ne pas ajouter de fichiers de workflow sous `.github/workflows/`.
-- Ne pas configurer de compilation, test, publication ou déploiement automatique sur push, pull request ou planification.
-- Effectuer les compilations et les tests **manuellement**, en local, lorsque nécessaire.
-- Ne pas réintroduire de service CI tiers sans décision explicite du propriétaire du projet.
-
-Cette règle concerne l'automatisation CI, **pas** les tests manuels ni les scripts de compilation locale.
-
-## Licences
-
-Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-English: [README.en.md](README.en.md).
-
-## Tests locaux manuels (sans CI)
-
-Les tests ne sont **jamais exécutés automatiquement** dans GitHub. Pour tester volontairement le moteur intégré sur votre poste :
+## Tests locaux
 
 ```bash
 python3 scripts/test-local.py
 ```
 
-Sur Windows : `py scripts/test-local.py`. Ces tests créent des dépôts et des fichiers temporaires ; ils ne doivent pas utiliser de dépôts contenant vos véritables sauvegardes. Ils vérifient notamment l'exploration des instantanés et la restauration sélective par les fonctions Go de restic.
+Windows : `py scripts/test-local.py`. Les tests Vaultic utilisent des dépôts temporaires. Les fichiers Go de test d'origine de restic sont conservés, mais **ses archives de test binaires et certains autres fichiers de test upstream ne sont pas inclus** ; la suite de tests complète de restic n'est donc pas garantie sans ces fixtures.
+
+## Règle absolue : pas de CI
+
+Aucune intégration continue, GitHub Actions, exécution planifiée ou déploiement automatique. Aucune configuration `.github/workflows`. La compilation et les tests sont uniquement déclenchés **manuellement, localement**.
+
+## Licence
+
+Code original Vaultic : [Apache-2.0](LICENSE). Code restic intégré : [BSD-2-Clause](LICENSE.restic). GUI Fyne : BSD-3-Clause. Voir [NOTICE](NOTICE) et [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Vaultic est indépendant de restic et de Fyne.
+
+English: [README.en.md](README.en.md).

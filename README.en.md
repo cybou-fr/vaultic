@@ -1,34 +1,37 @@
-# Vaultic — Native restic-based desktop backup app
+# Vaultic — Encrypted backup with the restic engine built in
 
-Vaultic is a Go + Fyne backup application integrating the **official restic v0.19.1 engine in-process**, built into a single executable. **Vaultic does not launch the restic CLI as a child process**, and does not invent its own repository format.
+Vaultic is a French-first cross-platform Go/Fyne application for Windows, Linux and macOS. **The full Go application source, including restic v0.19.1 engine packages, is checked into this repository.** The build does not clone or download restic source. No separate restic executable is needed at runtime.
 
-French is the default UI language; English localization is planned.
+## Source layout
 
-Build with `python3 scripts/assemble.py` (Windows: `py scripts/assemble.py`), requiring Git, Go 1.25.10+, Python 3, and Fyne desktop C/graphics build dependencies. At build time the script retrieves restic sources at pinned commit `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`, installs the GUI overlay into `cmd/restic`, and builds one native binary. The output requires no separate restic executable.
+- `cmd/restic/`: restic command implementations plus `vaultic_*.go` GUI and integration.
+- `internal/`: original restic engine, encrypted repository format, backends and file restoration.
+- `go.mod`, `go.sum`: combined module with Fyne, using the original restic import path to preserve internal imports.
+- `scripts/build.py`: local build, no upstream restic source fetch.
+- `scripts/test-local.py`: explicitly invoked manual integration tests.
 
-Current development state: encrypted repository initialization, backup with native progress, snapshot listing, a snapshot file browser, exact file/folder restore to an empty directory, structural repository checks, portable nonsecret settings. Not yet qualified for production backups or releases.
+The restic baseline is v0.19.1, original commit `6aa3a516ce654808a1f28f9fa21e9b7c8e6e90bf`. See `LICENSE.restic` for the BSD-2-Clause license. Vaultic-authored code uses Apache-2.0.
 
-The repo format, cryptography, deduplication, and backend implementations are supplied by upstream restic unchanged. Vaultic GUI code is Apache-2.0; restic remains BSD-2-Clause; Fyne remains BSD-3-Clause. See [README.md](README.md), [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+## Build (manual)
 
-Binary build distributions include LICENSE.restic and LICENSE.fyne. Third-party transitive dependency attribution must be audited before public production releases.
+Prerequisites: Go 1.25.10+, Python 3, and Fyne native/C graphics development libraries.
 
-## Development policy — CI prohibited
+```bash
+python3 scripts/build.py
+```
 
-**No continuous integration (CI) or GitHub Actions automation is allowed in Vaultic.**
+Windows: `py scripts/build.py`. You may also run `go mod tidy && go build -o vaultic ./cmd/restic`. Go downloads required third-party **module dependencies**, not the restic source.
 
-- Do not add workflows under `.github/workflows/`.
-- Do not configure automated builds, tests, releases, or deployments triggered by pushes, pull requests, or schedules.
-- Run builds and tests **manually**, on a development machine, as needed.
-- Do not introduce third-party CI services without an explicit project-owner decision.
+The no-argument executable starts the desktop GUI. Existing restic-style CLI commands are retained for diagnostics and interoperability. The repository format remains restic-compatible.
 
-This policy does **not** prohibit local build scripts or manually executed tests.
-
-## Manual local tests (NO CI)
-
-Vaultic does **not** run automated CI or GitHub Actions. To explicitly run in-process restic integration tests on your own machine:
+## Manual tests
 
 ```bash
 python3 scripts/test-local.py
 ```
 
-Windows: `py scripts/test-local.py`. The tests use temporary repositories and never target real user backups.
+The Vaultic tests create disposable repositories. Original upstream Go test source is checked in, but upstream binary test fixtures are not; full upstream tests may therefore require additional fixtures.
+
+**NO CI:** Do not add GitHub Actions or other CI. All builds and tests are opt-in local commands.
+
+**Status:** Development software; verify backup and restore manually on each platform before relying on it for important data. French UI is the default; English UI localization is planned.
