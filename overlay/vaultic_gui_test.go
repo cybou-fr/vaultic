@@ -32,7 +32,11 @@ func TestVaulticSourceValid(t *testing.T) {
     source := filepath.Join(root, "documents")
     if err := os.Mkdir(source, 0700); err != nil { t.Fatal(err) }
     got, err := vaulticSourcesForBackup(filepath.Join(root, "repo"), []string{source})
-    if err != nil || len(got) != 1 || got[0] != source { t.Fatalf("sources=%v err=%v", got, err) }
+    if err != nil || len(got) != 1 { t.Fatalf("sources=%v err=%v", got, err) }
+    // macOS temp paths can be aliases (/var -> /private/var).
+    canonical, err := filepath.EvalSymlinks(source)
+    if err != nil { t.Fatal(err) }
+    if got[0] != canonical { t.Fatalf("canonical source=%q, want %q", got[0], canonical) }
 }
 
 func TestVaulticRelativeRepositoryUsesExecutableDirectory(t *testing.T) {
