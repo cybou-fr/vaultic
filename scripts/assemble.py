@@ -29,8 +29,8 @@ def prepare():
     if head != COMMIT:
         raise RuntimeError(f"Unexpected restic commit: {head}; expected {COMMIT}. Remove {UPSTREAM} and retry.")
     target = UPSTREAM / "cmd" / "restic"
-    for name in ("vaultic_gui.go", "vaultic_settings.go", "vaultic_gui_test.go"):
-        shutil.copy2(ROOT / "overlay" / name, target / name)
+    for path in sorted((ROOT / "overlay").glob("vaultic_*.go")):
+        shutil.copy2(path, target / path.name)
     main = target / "main.go"
     code = main.read_text(encoding="utf-8")
     anchor = "func main() {\n"

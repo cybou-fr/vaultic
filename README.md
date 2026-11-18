@@ -47,7 +47,8 @@ Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont néc
 
 - Initialisation d'un dépôt chiffré compatible restic.
 - Sauvegarde de dossiers et fichiers, avec progression JSON native et annulation.
-- Historique des instantanés.
+- Historique des instantanés et exploration des fichiers par dossier.
+- Restauration sélective d'un fichier ou d'un dossier, sans filtre glob ni écrasement des fichiers existants.
 - Restauration d'un instantané dans un dossier vide.
 - Vérification de l'intégrité structurelle du dépôt.
 - Préférences non sensibles (sans mot de passe), avec mode portable.
@@ -57,7 +58,7 @@ Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont néc
 - Le mot de passe reste en mémoire, il n'est pas enregistré par Vaultic.
 - La sauvegarde refuse un dépôt local situé sous une source sélectionnée.
 - La restauration exige un dossier de destination existant et vide, pour éviter d'écraser des fichiers.
-- Pas encore de planificateur, d'explorateur sélectif d'instantanés, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
+- Pas encore de planificateur, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
 - Les sauvegardes doivent être validées en test avec le CLI officiel avant usage pour des données importantes.
 
 ## Politique de développement — CI interdite

@@ -320,6 +320,13 @@ func vaulticMain() {
             return nil
         })
     })
+    explorerButton:=widget.NewButton("Parcourir les fichiers…",func(){
+        if selectedSnapshot<0 || selectedSnapshot>=len(snapshots){
+            dialog.ShowInformation("Sélection requise","Sélectionnez un instantané.",w)
+            return
+        }
+        vaulticOpenExplorer(a,snapshots[selectedSnapshot],run)
+    })
     restoreButton:=widget.NewButton("Restaurer dans un dossier vide…",func(){
         if selectedSnapshot<0 || selectedSnapshot>=len(snapshots){
             dialog.ShowInformation("Sélection requise","Sélectionnez d'abord un instantané.",w);return
@@ -351,7 +358,7 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,addFolder,addFile,removeSource,backupButton,refreshButton,restoreButton,checkButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,addFolder,addFile,removeSource,backupButton,refreshButton,explorerButton,restoreButton,checkButton}
     fields:=widget.NewForm(
         widget.NewFormItem("Dépôt",container.NewBorder(nil,nil,nil,browseRepo,repoEntry)),
         widget.NewFormItem("Mot de passe",passEntry),
@@ -367,7 +374,7 @@ func vaulticMain() {
     )
     snapshotTab:=container.NewBorder(
         container.NewVBox(widget.NewLabel("Historique"),refreshButton),
-        container.NewVBox(widget.NewSeparator(),snapshotDetails,restoreButton),
+        container.NewVBox(widget.NewSeparator(),snapshotDetails,container.NewHBox(explorerButton,restoreButton)),
         nil,nil,snapshotList,
     )
     checkTab:=container.NewVBox(
