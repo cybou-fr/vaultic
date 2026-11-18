@@ -60,6 +60,17 @@ Sur Linux, des dépendances de compilation OpenGL/X11 supplémentaires sont néc
 - Pas encore de planificateur, d'explorateur sélectif d'instantanés, de règles de rétention, de gestionnaire de secrets système ni de test de reprise complet.
 - Les sauvegardes doivent être validées en test avec le CLI officiel avant usage pour des données importantes.
 
+## Politique de développement — CI interdite
+
+**Aucune intégration continue (CI) ni automatisation GitHub Actions n'est autorisée pour Vaultic.**
+
+- Ne pas ajouter de fichiers de workflow sous `.github/workflows/`.
+- Ne pas configurer de compilation, test, publication ou déploiement automatique sur push, pull request ou planification.
+- Effectuer les compilations et les tests **manuellement**, en local, lorsque nécessaire.
+- Ne pas réintroduire de service CI tiers sans décision explicite du propriétaire du projet.
+
+Cette règle concerne l'automatisation CI, **pas** les tests manuels ni les scripts de compilation locale.
+
 ## Licences
 
 Vaultic est un projet indépendant et n'est pas affilié officiellement à restic ni à Fyne. Le code propre à Vaultic est sous Apache-2.0. Le moteur restic reste sous BSD-2-Clause ; Fyne est sous BSD-3-Clause. Toutes les obligations de redistributions et de licences des dépendances transitives doivent être respectées. Voir [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

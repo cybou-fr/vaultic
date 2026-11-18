@@ -11,3 +11,15 @@ Current development state: encrypted repository initialization, backup with nati
 The repo format, cryptography, deduplication, and backend implementations are supplied by upstream restic unchanged. Vaultic GUI code is Apache-2.0; restic remains BSD-2-Clause; Fyne remains BSD-3-Clause. See [README.md](README.md), [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Binary build distributions include LICENSE.restic and LICENSE.fyne. Third-party transitive dependency attribution must be audited before public production releases.
+
+## Development policy — CI prohibited
+
+**No continuous integration (CI) or GitHub Actions automation is allowed in Vaultic.**
+
+- Do not add workflows under `.github/workflows/`.
+- Do not configure automated builds, tests, releases, or deployments triggered by pushes, pull requests, or schedules.
+- Run builds and tests **manually**, on a development machine, as needed.
+- Do not introduce third-party CI services without an explicit project-owner decision.
+
+This policy does **not** prohibit local build scripts or manually executed tests.
+
