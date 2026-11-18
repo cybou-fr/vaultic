@@ -90,13 +90,13 @@ func (c Client) repositoryPath() string {
 
 func (c Client) Validate() error {
 	if strings.TrimSpace(c.Repository) == "" {
-		return errors.New("укажите путь к хранилищу restic")
+		return errors.New("indiquez le chemin du dépôt restic")
 	}
 	if c.Password == "" {
-		return errors.New("введите пароль хранилища")
+		return errors.New("saisissez le mot de passe du dépôt")
 	}
 	if strings.ContainsRune(c.Repository, '\x00') || strings.ContainsRune(c.Password, '\x00') {
-		return errors.New("недопустимый символ в пути или пароле")
+		return errors.New("caractère non valide dans le chemin ou le mot de passe")
 	}
 	return nil
 }
@@ -152,19 +152,19 @@ func (c Client) Check(ctx context.Context, emit func(Event)) error {
 
 func (c Client) Backup(ctx context.Context, sources []string, emit func(Event)) error {
 	if len(sources) == 0 {
-		return errors.New("выберите минимум одну папку или файл")
+		return errors.New("sélectionnez au moins un dossier ou fichier")
 	}
 	clean := make([]string, 0, len(sources))
 	for _, path := range sources {
 		if strings.TrimSpace(path) == "" {
-			return errors.New("пустой путь источника")
+			return errors.New("chemin source vide")
 		}
 		full, err := filepath.Abs(path)
 		if err != nil {
 			return err
 		}
 		if _, err := os.Stat(full); err != nil {
-			return fmt.Errorf("источник %q: %w", full, err)
+			return fmt.Errorf("source %q : %w", full, err)
 		}
 		// Prevent recursively backing up the repository when using a local path.
 		if isLocalRepo(c.Repository) {
@@ -173,7 +173,7 @@ func (c Client) Backup(ctx context.Context, sources []string, emit func(Event)) 
 				return err
 			}
 			if sameOrWithin(full, repo) {
-				return fmt.Errorf("хранилище %q находится внутри источника %q", repo, full)
+				return fmt.Errorf("le dépôt %q se trouve dans la source %q", repo, full)
 			}
 		}
 		clean = append(clean, full)
@@ -207,7 +207,7 @@ func (c Client) Snapshots(ctx context.Context) ([]Snapshot, error) {
 	}
 	var snaps []Snapshot
 	if err := json.Unmarshal(out, &snaps); err != nil {
-		return nil, fmt.Errorf("разбор JSON снимков: %w", err)
+		return nil, fmt.Errorf("décodage JSON des instantanés : %w", err)
 	}
 	return snaps, nil
 }
@@ -216,10 +216,10 @@ var snapshotID = regexp.MustCompile(`^[0-9a-fA-F]{8,64}$`)
 
 func (c Client) Restore(ctx context.Context, id, destination string, emit func(Event)) error {
 	if !snapshotID.MatchString(id) {
-		return errors.New("некорректный идентификатор снимка")
+		return errors.New("identifiant d'instantané non valide")
 	}
 	if strings.TrimSpace(destination) == "" {
-		return errors.New("выберите папку восстановления")
+		return errors.New("sélectionnez un dossier de restauration")
 	}
 	target, err := filepath.Abs(destination)
 	if err != nil {
@@ -227,10 +227,10 @@ func (c Client) Restore(ctx context.Context, id, destination string, emit func(E
 	}
 	entries, err := os.ReadDir(target)
 	if err == nil && len(entries) != 0 {
-		return errors.New("для безопасности выберите пустую папку восстановления")
+		return errors.New("pour votre sécurité, sélectionnez un dossier de restauration vide")
 	}
 	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("проверка папки: %w", err)
+		return fmt.Errorf("vérification du dossier : %w", err)
 	}
 	// Always put restored data into an empty directory to avoid overwrites.
 	return c.stream(ctx, emit, "restore", id, "--target", target)
@@ -298,6 +298,6 @@ func scan(r io.Reader, onLine func(string)) {
 		onLine(s.Text())
 	}
 	if err := s.Err(); err != nil {
-		onLine("Ошибка чтения вывода restic: " + err.Error())
+		onLine("Erreur de lecture de la sortie de restic : " + err.Error())
 	}
 }
