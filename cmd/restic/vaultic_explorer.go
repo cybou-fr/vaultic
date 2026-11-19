@@ -116,6 +116,7 @@ func vaulticRestoreSelected(ctx context.Context,opts global.Options,id string,no
     r:=restorer.NewRestorer(repo,snapshot,restorer.Options{
         Progress:progress,
         Overwrite:restorer.OverwriteNever,
+        InheritWindowsPermissions:true,
         Delete:false,
     })
     r.SelectFilter=vaulticSelectionFilter(node.Path,node.Type=="dir")

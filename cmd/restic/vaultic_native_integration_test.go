@@ -63,7 +63,7 @@ func TestVaulticNativeEngineRoundTrip(t *testing.T) {
     }
     target, err := vaulticRestoreTarget(restoredPath)
     if err != nil { t.Fatalf("validate restore target: %v", err) }
-    if err := runRestore(ctx, RestoreOptions{Target:target}, opts, term, []string{snapshots[0].ID}); err != nil {
+    if err := runRestore(ctx, RestoreOptions{Target:target, InheritWindowsPermissions:true}, opts, term, []string{snapshots[0].ID}); err != nil {
         t.Fatalf("native restore: %v", err)
     }
     var restored [][]byte

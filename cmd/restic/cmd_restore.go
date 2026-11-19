@@ -66,14 +66,15 @@ type RestoreOptions struct {
 	filter.IncludePatternOptions
 	Target string
 	data.SnapshotFilter
-	DryRun              bool
-	Sparse              bool
-	Verify              bool
-	Overwrite           restorer.OverwriteBehavior
-	Delete              bool
-	ExcludeXattrPattern []string
-	IncludeXattrPattern []string
-	OwnershipByName     bool
+	DryRun                    bool
+	Sparse                    bool
+	Verify                    bool
+	Overwrite                 restorer.OverwriteBehavior
+	Delete                    bool
+	ExcludeXattrPattern       []string
+	IncludeXattrPattern       []string
+	OwnershipByName           bool
+	InheritWindowsPermissions bool
 }
 
 func (opts *RestoreOptions) AddFlags(f *pflag.FlagSet) {
@@ -169,12 +170,13 @@ func runRestore(ctx context.Context, opts RestoreOptions, gopts global.Options,
 
 	progress := restoreui.NewProgress(printer, ui.CalculateProgressInterval(!gopts.Quiet, gopts.JSON, term.CanUpdateStatus()))
 	res := restorer.NewRestorer(repo, sn, restorer.Options{
-		DryRun:          opts.DryRun,
-		Sparse:          opts.Sparse,
-		Progress:        progress,
-		Overwrite:       opts.Overwrite,
-		Delete:          opts.Delete,
-		OwnershipByName: opts.OwnershipByName,
+		DryRun:                    opts.DryRun,
+		Sparse:                    opts.Sparse,
+		Progress:                  progress,
+		Overwrite:                 opts.Overwrite,
+		Delete:                    opts.Delete,
+		OwnershipByName:           opts.OwnershipByName,
+		InheritWindowsPermissions: opts.InheritWindowsPermissions,
 	})
 
 	totalErrors := 0

@@ -125,6 +125,7 @@ func vaulticMain() {
     a.SetIcon(vaulticAppIcon())
     a.Settings().SetTheme(&vaulticVisualTheme{})
     w := a.NewWindow("Vaultic — sauvegardes chiffrées")
+    w.SetMaster()
     w.Resize(fyne.NewSize(1180, 780))
 
     saved := vaulticLoadSettings()
@@ -232,6 +233,11 @@ func vaulticMain() {
                 cancelOp = nil
                 busy.Store(false)
                 setBusy(false)
+                if errors.Is(err, context.Canceled) {
+                    status.SetText(title + " — annulé")
+                    appendLog("Annulé : " + title)
+                    return
+                }
                 if err != nil {
                     status.SetText("Erreur : "+title)
                     appendLog(err.Error())
@@ -257,7 +263,6 @@ func vaulticMain() {
             return runInit(ctx,InitOptions{RepositoryVersion:"stable"},g,nil,g.Term)
         })
     })
-    versionLabel := widget.NewLabel("Moteur restic intégré — "+global.Version)
 
     sourcesList := widget.NewList(
         func()int{return len(sources)},
@@ -363,13 +368,13 @@ func vaulticMain() {
             dest,err:=vaulticRestoreTarget(uri.Path())
             if err!=nil{dialog.ShowError(err,w);return}
             dialog.ShowConfirm("Confirmer la restauration",
-                "Restaurer l'instantané "+id[:12]+" dans :\n"+dest+"\n\nLe dossier doit être vide. Aucun fichier existant ne sera écrasé.",
+                "Restaurer l'instantané "+id[:min(len(id), 12)]+" dans :\n"+dest+"\n\nLe dossier doit être vide. Aucun fichier existant ne sera écrasé.",
                 func(ok bool){
                     if !ok{return}
                     // Recheck immediately before starting the restoration.
                     run("Restauration",func(ctx context.Context,g global.Options)error{
                         if _,err:=vaulticRestoreTarget(dest);err!=nil{return err}
-                        return runRestore(ctx,RestoreOptions{Target:dest, Overwrite:restorer.OverwriteNever},g,g.Term,[]string{id})
+                        return runRestore(ctx,RestoreOptions{Target:dest, Overwrite:restorer.OverwriteNever, InheritWindowsPermissions:true},g,g.Term,[]string{id})
                     })
                 },w)
         },w).Show()

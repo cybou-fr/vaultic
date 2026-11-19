@@ -6,6 +6,7 @@ Go modules may be downloaded normally; no upstream restic source is fetched.
 """
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -23,16 +24,19 @@ def build():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     binary = output / ("vaultic.exe" if sys.platform == "win32" else "vaultic")
-    run("go", "mod", "tidy")
     ldflags = "-s -w -H windowsgui" if sys.platform == "win32" else "-s -w"
-    run("go", "build", "-ldflags", ldflags, "-o", binary, "./cmd/restic")
+    run("go", "build", "-mod=readonly", "-ldflags", ldflags, "-o", binary, "./cmd/restic")
     for name in ("LICENSE", "LICENSE.restic", "NOTICE", "THIRD_PARTY_NOTICES.md", "portable.flag"):
         shutil.copy2(ROOT / name, output / name)
     fyne_dir = subprocess.check_output(
         ["go", "list", "-m", "-f", "{{.Dir}}", "fyne.io/fyne/v2"],
         cwd=ROOT, text=True,
     ).strip()
-    shutil.copy2(Path(fyne_dir) / "LICENSE", output / "LICENSE.fyne")
+    fyne_license = output / "LICENSE.fyne"
+    if sys.platform == "win32" and fyne_license.exists():
+        # Older builds copied the Go module cache's read-only file mode.
+        fyne_license.chmod(stat.S_IREAD | stat.S_IWRITE)
+    shutil.copyfile(Path(fyne_dir) / "LICENSE", fyne_license)
     print(f"Vaultic binary: {binary}")
 
 if __name__ == "__main__":

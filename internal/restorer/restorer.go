@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -46,6 +47,8 @@ type Options struct {
 	Overwrite       OverwriteBehavior
 	Delete          bool
 	OwnershipByName bool
+	// InheritWindowsPermissions leaves restored objects with the destination's permissions.
+	InheritWindowsPermissions bool
 }
 
 type OverwriteBehavior int
@@ -297,6 +300,12 @@ func (res *Restorer) restoreNodeMetadataTo(node *data.Node, target, location str
 		return nil
 	}
 	debug.Log("restoreNodeMetadata %v %v %v", node.Name, target, location)
+	if _, ok := node.GenericAttributes[data.TypeSecurityDescriptor]; res.opts.InheritWindowsPermissions && ok {
+		copyNode := *node
+		copyNode.GenericAttributes = maps.Clone(node.GenericAttributes)
+		delete(copyNode.GenericAttributes, data.TypeSecurityDescriptor)
+		node = &copyNode
+	}
 	err := fs.NodeRestoreMetadata(node, target, res.Warn, res.XattrSelectFilter, res.opts.OwnershipByName)
 	if err != nil {
 		debug.Log("node.RestoreMetadata(%s) error %v", target, err)
