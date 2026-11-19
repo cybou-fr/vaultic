@@ -17,7 +17,6 @@ import (
 // every operation uses the application's existing single-operation runner.
 func vaulticOpenExplorer(app fyne.App,snapshot vaulticSnapshot,run func(string,func(context.Context,global.Options)error)){
     w:=app.NewWindow("Vaultic — Instantané "+snapshot.ShortID)
-    w.Resize(fyne.NewSize(900,600))
     directory:="/"
     var nodes []vaulticSnapshotNode
     selected:=-1
@@ -27,7 +26,7 @@ func vaulticOpenExplorer(app fyne.App,snapshot vaulticSnapshot,run func(string,f
     selection.Wrapping=fyne.TextWrapWord
     files:=widget.NewList(
         func()int{return len(nodes)},
-        func()fyne.CanvasObject{return widget.NewLabel("")},
+        vaulticListLabel,
         func(id widget.ListItemID,obj fyne.CanvasObject){
             if int(id)<0 || int(id)>=len(nodes){return}
             n:=nodes[int(id)]
@@ -105,12 +104,12 @@ func vaulticOpenExplorer(app fyne.App,snapshot vaulticSnapshot,run func(string,f
     }
     w.SetContent(container.NewBorder(
         container.NewPadded(container.NewVBox(
-            vaulticPageHeading("EXPLORATEUR","Contenu de l'instantané","Parcourez les dossiers pour trouver précisément vos fichiers."),
+            vaulticPageHeading("Contenu de l'instantané","Sélectionnez un fichier ou un dossier à restaurer."),
             location,container.NewHBox(back,open),
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(selection,restore))),
         nil,nil,container.NewPadded(vaulticSurface(files)),
     ))
-    w.Show()
+    vaulticShowWindow(w,fyne.NewSize(900,600),fyne.NewSize(500,375))
     load("/")
 }

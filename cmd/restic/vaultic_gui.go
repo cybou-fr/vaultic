@@ -126,7 +126,6 @@ func vaulticMain() {
     a.Settings().SetTheme(&vaulticVisualTheme{})
     w := a.NewWindow("Vaultic — sauvegardes chiffrées")
     w.SetMaster()
-    w.Resize(fyne.NewSize(1180, 780))
 
     saved := vaulticLoadSettings()
     sources := append([]string(nil), saved.Sources...)
@@ -134,7 +133,8 @@ func vaulticMain() {
     selectedSource, selectedSnapshot := -1, -1
     sourceCountValue:=vaulticHeading(fmt.Sprintf("%d",len(sources)),24)
     snapshotCountValue:=vaulticHeading("—",24)
-    recentRunValue:=vaulticHeading("Aucune",20)
+    recentRunValue:=widget.NewLabelWithStyle("Aucune",fyne.TextAlignLeading,fyne.TextStyle{Bold:true})
+    recentRunValue.Truncation=fyne.TextTruncateEllipsis
     recentSnapshotValue:=widget.NewLabel("Aucun instantané consulté")
     recentSnapshotValue.Wrapping=fyne.TextWrapWord
 
@@ -153,8 +153,10 @@ func vaulticMain() {
     status := widget.NewLabel("Prêt")
     status.Wrapping = fyne.TextWrapWord
     progress := widget.NewProgressBar()
+    progress.Hide()
     logs := widget.NewMultiLineEntry()
     logs.SetMinRowsVisible(4)
+    logs.SetPlaceHolder("Aucun événement dans cette session.")
     logs.Wrapping = fyne.TextWrapWord
     logs.Disable()
     var logText string
@@ -173,33 +175,78 @@ func vaulticMain() {
     var busy atomic.Bool
     var cancelOp context.CancelFunc
     var actionButtons []*widget.Button
+    var updateActions func()
+    var windowContent *fyne.Container
     cancelButton := widget.NewButton("Arrêter", func() {
         if cancelOp != nil { cancelOp(); status.SetText("Annulation…") }
     })
-    cancelButton.Disable()
+    cancelButton.Hide()
     setBusy := func(on bool) {
-        if on { cancelButton.Enable() } else { cancelButton.Disable() }
+        if on {
+            cancelButton.Enable()
+            cancelButton.Show()
+            repoEntry.Disable()
+            passEntry.Disable()
+        } else {
+            cancelButton.Hide()
+            progress.Hide()
+            repoEntry.Enable()
+            passEntry.Enable()
+        }
         for _, b := range actionButtons { if on { b.Disable() } else { b.Enable() } }
+        updateActions()
+        windowContent.Refresh()
     }
 
     // Called from the restic worker's goroutines; all widget access is marshaled
     // onto Fyne's UI thread. restic emits native JSON backup progress.
-    onOutput := func(line string) {
+    onOutput := func(ctx context.Context, title, line string) {
         if line == "" { return }
         var e struct {
             MessageType string `json:"message_type"`
             PercentDone float64 `json:"percent_done"`
             FilesDone int64 `json:"files_done"`
+            FilesRestored int64 `json:"files_restored"`
             TotalFiles int64 `json:"total_files"`
+            TotalBytes int64 `json:"total_bytes"`
+            FilesProcessed int64 `json:"total_files_processed"`
+            BytesProcessed int64 `json:"total_bytes_processed"`
+            BytesRestored int64 `json:"bytes_restored"`
             SnapshotID string `json:"snapshot_id"`
-            ErrorCount int64 `json:"error_count"`
+            Error struct {
+                Message string `json:"message"`
+            } `json:"error"`
         }
-        if json.Unmarshal([]byte(line), &e) == nil && e.MessageType == "status" {
-            fyne.Do(func(){
-                if e.PercentDone >= 0 && e.PercentDone <= 1 { progress.SetValue(e.PercentDone) }
-                status.SetText(fmt.Sprintf("Sauvegarde : %.1f %% — %d / %d fichiers", 100*e.PercentDone, e.FilesDone, e.TotalFiles))
-            })
-            return
+        if json.Unmarshal([]byte(line), &e) == nil {
+            switch e.MessageType {
+            case "status":
+                fyne.Do(func(){
+                if ctx.Err() != nil { return }
+                if e.TotalBytes > 0 && e.PercentDone >= 0 && e.PercentDone <= 1 {
+                    progress.SetValue(e.PercentDone)
+                    if !progress.Visible() {
+                        progress.Show()
+                        windowContent.Refresh()
+                    }
+                }
+                if e.TotalFiles > 0 {
+                    status.SetText(fmt.Sprintf("%s en cours · %d / %d fichiers", title, e.FilesDone + e.FilesRestored, e.TotalFiles))
+                }
+                })
+                return
+            case "summary":
+                if e.SnapshotID != "" {
+                    line = fmt.Sprintf("Instantané %s · %d fichier(s) traité(s), %d octets", e.SnapshotID, e.FilesProcessed, e.BytesProcessed)
+                } else if e.TotalFiles > 0 {
+                    line = fmt.Sprintf("%d élément(s) restauré(s) sur %d · %d octets", e.FilesRestored, e.TotalFiles, e.BytesRestored)
+                } else {
+                    return
+                }
+            case "error":
+                if e.Error.Message != "" {
+                    line = e.Error.Message
+                }
+            }
         }
         fyne.Do(func(){ appendLog(line) })
     }
@@ -222,7 +269,7 @@ func vaulticMain() {
         status.SetText(title+"…")
         appendLog("Début : "+title)
         go func(){
-            terminal := &vaulticTerminal{line:onOutput,output:io.Discard}
+            terminal := &vaulticTerminal{line:func(line string){onOutput(ctx, title, line)},output:io.Discard}
             gopts := global.Options{
                 Repo: vaulticResolvedRepository(repo), Password: password, Backends: all.Backends(),
                 Term:terminal, JSON:true, Verbosity:1,
@@ -245,8 +292,7 @@ func vaulticMain() {
                     return
                 }
                 status.SetText(title+" — terminé")
-                recentRunValue.Text=title
-                recentRunValue.Refresh()
+                recentRunValue.SetText(title)
                 appendLog("Terminé : "+title)
             })
         }()
@@ -264,29 +310,50 @@ func vaulticMain() {
         })
     })
 
+    sourcesEmpty := vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
     sourcesList := widget.NewList(
         func()int{return len(sources)},
-        func()fyne.CanvasObject{return widget.NewLabel("")},
+        vaulticListLabel,
         func(id widget.ListItemID,obj fyne.CanvasObject){if id>=0 && id<len(sources){obj.(*widget.Label).SetText(sources[id])}},
     )
-    sourcesList.OnSelected=func(id widget.ListItemID){selectedSource=id}
+    sourcePath := widget.NewLabel("")
+    sourcesList.OnSelected=func(id widget.ListItemID){
+        if id < 0 || id >= len(sources) { return }
+        selectedSource=id
+        sourcePath.SetText(sources[id])
+        updateActions()
+    }
+    sourcesList.OnUnselected=func(id widget.ListItemID){
+        if selectedSource == id {
+            selectedSource = -1
+            sourcePath.SetText("")
+            updateActions()
+        }
+    }
+    refreshSources := func() {
+        sourcesList.Refresh()
+        sourceCountValue.Text = fmt.Sprintf("%d",len(sources))
+        sourceCountValue.Refresh()
+        updateActions()
+        save()
+    }
     addFolder := widget.NewButton("+ Dossier",func(){
         dialog.NewFolderOpen(func(uri fyne.ListableURI,err error){
             if err != nil { dialog.ShowError(err,w);return }
-            if uri != nil { sources=vaulticAppendUnique(sources,uri.Path());sourcesList.Refresh();sourceCountValue.Text=fmt.Sprintf("%d",len(sources));sourceCountValue.Refresh();save() }
+            if uri != nil { sources=vaulticAppendUnique(sources,uri.Path()); refreshSources() }
         },w).Show()
     })
     addFile := widget.NewButton("+ Fichier",func(){
         dialog.NewFileOpen(func(f fyne.URIReadCloser,err error){
             if err != nil {dialog.ShowError(err,w);return}
-            if f != nil { path:=f.URI().Path(); _=f.Close(); sources=vaulticAppendUnique(sources,path);sourcesList.Refresh();sourceCountValue.Text=fmt.Sprintf("%d",len(sources));sourceCountValue.Refresh();save() }
+            if f != nil { path:=f.URI().Path(); _=f.Close(); sources=vaulticAppendUnique(sources,path); refreshSources() }
         },w).Show()
     })
     removeSource := widget.NewButton("Retirer",func(){
         if selectedSource<0 || selectedSource>=len(sources){return}
         sources=append(sources[:selectedSource],sources[selectedSource+1:]...)
-        selectedSource=-1
-        sourcesList.UnselectAll();sourcesList.Refresh();sourceCountValue.Text=fmt.Sprintf("%d",len(sources));sourceCountValue.Refresh();save()
+        sourcesList.UnselectAll()
+        refreshSources()
     })
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         selected := append([]string(nil), sources...)
@@ -302,12 +369,12 @@ func vaulticMain() {
     backupButton.Importance=widget.HighImportance
     sourceSection:=container.NewBorder(
         container.NewVBox(widget.NewLabelWithStyle("Sources",fyne.TextAlignLeading,fyne.TextStyle{Bold:true}),container.NewHBox(addFolder,addFile,removeSource)),
-        nil,nil,nil,sourcesList,
+        container.NewHScroll(sourcePath),nil,nil,container.NewStack(sourcesList,sourcesEmpty),
     )
 
     snapshotList:=widget.NewList(
         func()int{return len(snapshots)},
-        func()fyne.CanvasObject{return widget.NewLabel("")},
+        vaulticListLabel,
         func(id widget.ListItemID,obj fyne.CanvasObject){
             if id>=0 && id<len(snapshots){
                 sn:=snapshots[id]
@@ -315,13 +382,31 @@ func vaulticMain() {
             }
         },
     )
-    snapshotDetails:=widget.NewLabel("Sélectionnez un instantané à restaurer.")
-    snapshotDetails.Wrapping=fyne.TextWrapWord
+    snapshotEmptyLabel := vaulticWrappedLabel("Actualisez l’historique pour afficher les instantanés du dépôt.")
+    snapshotEmpty := vaulticEmptyState(snapshotEmptyLabel)
+    snapshotDetails:=vaulticWrappedLabel("Sélectionnez un instantané pour le parcourir ou le restaurer.")
+    snapshotDetailsScroll := container.NewVScroll(snapshotDetails)
+    snapshotDetailsScroll.SetMinSize(fyne.NewSize(0, 64))
+    var snapshotsLoaded bool
     snapshotList.OnSelected=func(id widget.ListItemID){
-        selectedSnapshot=id
         if id>=0 && id<len(snapshots){
+            selectedSnapshot=id
             sn:=snapshots[id]
             snapshotDetails.SetText(fmt.Sprintf("Instantané : %s\nMachine : %s\nSources :\n%s",sn.ID,sn.Hostname,strings.Join(sn.Paths,"\n")))
+        }
+        updateActions()
+    }
+    resetSnapshotSelection := func() {
+        selectedSnapshot = -1
+        snapshotList.UnselectAll()
+        snapshotDetails.SetText("Sélectionnez un instantané pour le parcourir ou le restaurer.")
+        updateActions()
+    }
+    snapshotList.OnUnselected = func(id widget.ListItemID) {
+        if selectedSnapshot == id {
+            selectedSnapshot = -1
+            snapshotDetails.SetText("Sélectionnez un instantané pour le parcourir ou le restaurer.")
+            updateActions()
         }
     }
     refreshButton:=widget.NewButton("Actualiser les instantanés",func(){
@@ -334,10 +419,9 @@ func vaulticMain() {
             if err:=json.Unmarshal(out.Bytes(),&list);err!=nil{return fmt.Errorf("Décodage des instantanés : %w",err)}
             fyne.Do(func(){
                 snapshots=list
-                selectedSnapshot=-1
-                snapshotList.UnselectAll()
+                snapshotsLoaded = true
+                resetSnapshotSelection()
                 snapshotList.Refresh()
-                snapshotDetails.SetText(fmt.Sprintf("%d instantané(s)",len(list)))
                 snapshotCountValue.Text=fmt.Sprintf("%d",len(list))
                 snapshotCountValue.Refresh()
                 if len(list)>0{
@@ -354,9 +438,16 @@ func vaulticMain() {
             dialog.ShowInformation("Sélection requise","Sélectionnez un instantané.",w)
             return
         }
-        vaulticOpenExplorer(a,snapshots[selectedSnapshot],run)
+        repository := vaulticResolvedRepository(repoEntry.Text)
+        vaulticOpenExplorer(a,snapshots[selectedSnapshot],func(title string, operation func(context.Context, global.Options) error) {
+            if repository != vaulticResolvedRepository(repoEntry.Text) {
+                dialog.ShowInformation("Dépôt modifié", "Actualisez les instantanés du dépôt actif avant de les parcourir.", w)
+                return
+            }
+            run(title, operation)
+        })
     })
-    restoreButton:=widget.NewButton("Restaurer dans un dossier vide…",func(){
+    restoreButton:=widget.NewButton("Restaurer le tout…",func(){
         if selectedSnapshot<0 || selectedSnapshot>=len(snapshots){
             dialog.ShowInformation("Sélection requise","Sélectionnez d'abord un instantané.",w);return
         }
@@ -387,7 +478,36 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,addFolder,addFile,removeSource,backupButton,refreshButton,explorerButton,restoreButton,checkButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,addFolder,addFile,refreshButton,checkButton}
+    updateActions = func() {
+        if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
+        if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
+        if snapshotsLoaded {
+            snapshotEmptyLabel.SetText("Ce dépôt ne contient aucun instantané.")
+        } else {
+            snapshotEmptyLabel.SetText("Actualisez l’historique pour afficher les instantanés du dépôt.")
+        }
+        vaulticSetButtonEnabled(backupButton, !busy.Load() && len(sources) > 0)
+        vaulticSetButtonEnabled(removeSource, !busy.Load() && selectedSource >= 0)
+        canRestore := !busy.Load() && selectedSnapshot >= 0
+        vaulticSetButtonEnabled(explorerButton, canRestore)
+        vaulticSetButtonEnabled(restoreButton, canRestore)
+    }
+    updateRepositoryLabel := repoEntry.OnChanged
+    repository := strings.TrimSpace(repoEntry.Text)
+    repoEntry.OnChanged = func(value string) {
+        updateRepositoryLabel(value)
+        next := strings.TrimSpace(value)
+        if next == repository { return }
+        repository = next
+        snapshots = nil
+        snapshotsLoaded = false
+        resetSnapshotSelection()
+        snapshotList.Refresh()
+        snapshotCountValue.Text = "—"
+        snapshotCountValue.Refresh()
+        recentSnapshotValue.SetText("Aucun instantané consulté")
+    }
 
     // Every page has one purpose. Operations still invoke the original Go
     // restic engine; this shell only changes presentation and navigation.
@@ -397,44 +517,38 @@ func vaulticMain() {
     )
     repositoryConfiguration:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dépôt de sauvegarde",20),
-        widget.NewLabel("Choisissez un dépôt restic existant ou initialisez-en un nouveau."),
+        vaulticWrappedLabel("Indiquez le chemin d’un dépôt existant ou initialisez un nouveau dépôt."),
         fields,
         container.NewHBox(initButton),
-        vaulticCaption("Le mot de passe n'est jamais enregistré par Vaultic."),
     ))
 
-    startBackup:=widget.NewButtonWithIcon("Sauvegarder maintenant",theme.MediaPlayIcon(),func(){backupButton.OnTapped()})
+    startBackup:=widget.NewButtonWithIcon("Préparer une sauvegarde",theme.MediaPlayIcon(),nil)
     startBackup.Importance=widget.HighImportance
     setupButton:=widget.NewButtonWithIcon("Configurer le dépôt",theme.SettingsIcon(),nil)
     viewSnapshots:=widget.NewButtonWithIcon("Voir les instantanés",theme.HistoryIcon(),nil)
-    heroDescription:=widget.NewLabel("Sauvegardez, consultez et restaurez vos fichiers chiffrés. Vous gardez le contrôle de vos données.")
-    heroDescription.Wrapping=fyne.TextWrapWord
-    hero:=vaulticSurfaceRaised(container.NewVBox(
-        vaulticOverline("VAULTIC  /  PROTECTION DES DONNÉES"),
-        vaulticHeading("Votre sauvegarde. Votre contrôle.",29),
-        heroDescription,
-        container.NewHBox(startBackup,setupButton),
-    ))
     snapshotOverview:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dernière activité",19),
         recentSnapshotValue,
-        vaulticCaption("Actualisez l'historique pour consulter la date de vos sauvegardes."),
         viewSnapshots,
     ))
-    statGrid:=container.NewGridWithColumns(2,
-        vaulticStatCard("SOURCES CONFIGURÉES",sourceCountValue,"Fichiers et dossiers sélectionnés"),
-        vaulticStatCard("INSTANTANÉS CONSULTÉS",snapshotCountValue,"Actualisez l'historique pour les compter"),
-        vaulticStatCard("DÉPÔT ACTIF",repoValue,"Emplacement du stockage chiffré"),
-        vaulticStatCard("DERNIÈRE OPÉRATION",recentRunValue,"Depuis le lancement de Vaultic"),
+    statGrid:=container.NewVBox(
+        container.NewGridWithColumns(2,
+            vaulticStatCard("SOURCES CONFIGURÉES",sourceCountValue),
+            vaulticStatCard("INSTANTANÉS CONSULTÉS",snapshotCountValue),
+        ),
+        container.NewGridWithColumns(2,
+            vaulticStatCard("DÉPÔT ACTIF",repoValue),
+            vaulticStatCard("DERNIÈRE OPÉRATION RÉUSSIE",recentRunValue),
+        ),
     )
     overviewPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
-        vaulticPageHeading("VUE D'ENSEMBLE","Vos sauvegardes, en toute clarté.","Le moteur restic officiel fonctionne directement dans Vaultic."),
-        hero,statGrid,snapshotOverview,
+        vaulticHeading("Vue d’ensemble",26),
+        container.NewHBox(startBackup,setupButton),statGrid,snapshotOverview,
     )))
     backupPage:=container.NewBorder(
-        container.NewPadded(vaulticPageHeading("SAUVEGARDE","Choisir les éléments à protéger","Définissez les sources, puis lancez une sauvegarde chiffrée.")),
+        container.NewPadded(vaulticPageHeading("Sauvegarde","Choisissez les fichiers et dossiers à sauvegarder.")),
         container.NewPadded(vaulticSurface(container.NewVBox(
-            vaulticCaption("Le dépôt ne peut pas se trouver dans un dossier source."),
+            vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
             backupButton,
         ))),
         nil,nil,
@@ -442,20 +556,20 @@ func vaulticMain() {
     )
     snapshotPage:=container.NewBorder(
         container.NewPadded(container.NewVBox(
-            vaulticPageHeading("HISTORIQUE","Retrouver et restaurer","Parcourez vos instantanés avant de restaurer les fichiers voulus."),
+            vaulticPageHeading("Instantanés","Parcourez les fichiers d’un instantané ou restaurez-le en entier."),
             refreshButton,
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(
-            snapshotDetails,
+            snapshotDetailsScroll,
             container.NewHBox(explorerButton,restoreButton),
         ))),
         nil,nil,
-        container.NewPadded(vaulticSurface(snapshotList)),
+        container.NewPadded(vaulticSurface(container.NewStack(snapshotList,snapshotEmpty))),
     )
     checkDescription:=widget.NewLabel("La vérification contrôle la structure du dépôt. Elle ne supprime pas vos sauvegardes.")
     checkDescription.Wrapping=fyne.TextWrapWord
     checkPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
-        vaulticPageHeading("INTÉGRITÉ","Vérifier les sauvegardes","Contrôlez la cohérence de la structure du dépôt."),
+        vaulticHeading("Intégrité",26),
         vaulticSurface(container.NewVBox(
             vaulticHeading("Contrôle du dépôt",20),
             checkDescription,
@@ -463,20 +577,19 @@ func vaulticMain() {
         )),
     )))
     journalPage:=container.NewBorder(
-        container.NewPadded(vaulticPageHeading("ACTIVITÉ","Journal des opérations","Messages transmis par le moteur intégré depuis l'ouverture de Vaultic.")),
+        container.NewPadded(vaulticHeading("Activité",26)),
         nil,nil,nil,container.NewPadded(vaulticSurface(container.NewBorder(
             container.NewHBox(widget.NewLabel("Événements de cette session"),layout.NewSpacer(),widget.NewButtonWithIcon("Effacer",theme.ContentClearIcon(),func(){logText="";logs.SetText("")})),
             nil,nil,nil,container.NewVScroll(logs),
         ))),
     )
     settingsPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
-        vaulticPageHeading("PRÉFÉRENCES","Dépôt et sécurité","Configurez la destination de vos sauvegardes et les accès au dépôt."),
+        vaulticHeading("Paramètres",26),
         repositoryConfiguration,
         vaulticSurface(container.NewVBox(
             vaulticHeading("À propos de Vaultic",19),
-            widget.NewLabel("Le format de dépôt est compatible avec restic."),
-            widget.NewLabel("Aucune installation séparée de restic n'est nécessaire."),
-            widget.NewLabel("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic)."),
+            vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),
+            vaulticWrappedLabel("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic)."),
             widget.NewLabel("Moteur intégré — "+global.Version),
         )),
     )))
@@ -503,40 +616,33 @@ func vaulticMain() {
         navButtons=append(navButtons,button)
     }
     setupButton.OnTapped=func(){navigate(5)}
-    startBackup.OnTapped=func(){
-        if strings.TrimSpace(repoEntry.Text)=="" || strings.TrimSpace(passEntry.Text)==""{navigate(5);return}
-        backupButton.OnTapped()
-    }
+    startBackup.OnTapped=func(){navigate(1)}
     viewSnapshots.OnTapped=func(){navigate(2)}
     sidebarBg:=canvas.NewRectangle(vaulticSidebar)
-    brandText:=container.NewVBox(
-        vaulticOverline("CYBOU / APPLICATION"),
-        vaulticHeading("VAULTIC",26),
-        vaulticCaption("SAUVEGARDE CHIFFRÉE"),
-    )
-    brand:=container.NewHBox(container.NewGridWrap(fyne.NewSize(52,52),widget.NewIcon(vaulticAppIcon())),brandText)
+    brand:=container.NewHBox(container.NewGridWrap(fyne.NewSize(40,40),widget.NewIcon(vaulticAppIcon())),container.NewCenter(vaulticHeading("Vaultic",24)))
     sidebar:=container.NewStack(sidebarBg,container.NewPadded(container.NewBorder(
-        container.NewVBox(brand,widget.NewSeparator()),
-        container.NewVBox(widget.NewSeparator(),vaulticCaption("MOTEUR RESTIC INTÉGRÉ"),vaulticCaption("FRANÇAIS  •  DESKTOP")),
+        container.NewVBox(brand,widget.NewSeparator()), nil,
         nil,nil,
-        container.NewVBox(navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5]),
+        container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4),navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5])),
     )))
     statusTitle:=widget.NewLabelWithStyle("ÉTAT",fyne.TextAlignLeading,fyne.TextStyle{Bold:true})
     statusBar:=container.NewVBox(
         widget.NewSeparator(),
-        container.NewHBox(statusTitle,status,layout.NewSpacer(),cancelButton),
+        container.NewBorder(nil,nil,statusTitle,cancelButton,status),
         progress,
     )
     navigate(0)
-    w.SetContent(container.NewBorder(nil,container.NewPadded(statusBar),sidebar,nil,mainPage))
+    windowContent = container.NewBorder(nil,container.NewPadded(statusBar),sidebar,nil,mainPage)
+    updateActions()
+    w.SetContent(windowContent)
     w.SetCloseIntercept(func(){
         if busy.Load(){dialog.ShowInformation("Opération en cours","Arrêtez l'opération avant de quitter Vaultic.",w);return}
         save()
         w.SetCloseIntercept(nil)
         w.Close()
     })
-    appendLog("Moteur officiel restic intégré. Aucun programme restic externe nécessaire.")
-    w.ShowAndRun()
+    vaulticShowWindow(w, fyne.NewSize(1180,760), fyne.NewSize(640,365))
+    a.Run()
 }
 
 func vaulticAppendUnique(paths []string, path string) []string {

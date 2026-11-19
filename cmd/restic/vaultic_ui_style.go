@@ -7,6 +7,7 @@ import (
     "fyne.io/fyne/v2"
     "fyne.io/fyne/v2/canvas"
     "fyne.io/fyne/v2/container"
+    "fyne.io/fyne/v2/layout"
     "fyne.io/fyne/v2/theme"
     "fyne.io/fyne/v2/widget"
 )
@@ -95,22 +96,9 @@ func vaulticSurface(content fyne.CanvasObject) fyne.CanvasObject {
     return container.NewStack(bg,container.NewPadded(container.NewPadded(content)))
 }
 
-func vaulticSurfaceRaised(content fyne.CanvasObject) fyne.CanvasObject {
-    bg:=canvas.NewRectangle(vaulticPanelRaised)
-    bg.CornerRadius=16
-    return container.NewStack(bg,container.NewPadded(container.NewPadded(content)))
-}
-
 func vaulticHeading(text string,size float32) *canvas.Text {
     result:=canvas.NewText(text,vaulticText)
     result.TextSize=size
-    result.TextStyle=fyne.TextStyle{Bold:true}
-    return result
-}
-
-func vaulticOverline(text string) *canvas.Text {
-    result:=canvas.NewText(text,vaulticAccent)
-    result.TextSize=11
     result.TextStyle=fyne.TextStyle{Bold:true}
     return result
 }
@@ -121,20 +109,55 @@ func vaulticCaption(text string) *canvas.Text {
     return result
 }
 
-func vaulticPageHeading(eyebrow,title,description string) fyne.CanvasObject {
-    sub:=widget.NewLabel(description)
-    sub.Wrapping=fyne.TextWrapWord
+func vaulticPageHeading(title,description string) fyne.CanvasObject {
     return container.NewVBox(
-        vaulticOverline(eyebrow),
         vaulticHeading(title,26),
-        sub,
+        vaulticWrappedLabel(description),
     )
 }
 
-func vaulticStatCard(title string,value fyne.CanvasObject,detail string) fyne.CanvasObject {
+func vaulticStatCard(title string,value fyne.CanvasObject) fyne.CanvasObject {
     return vaulticSurface(container.NewVBox(
         vaulticCaption(title),
         value,
-        vaulticCaption(detail),
     ))
+}
+
+func vaulticWrappedLabel(text string) *widget.Label {
+    label := widget.NewLabel(text)
+    label.Wrapping = fyne.TextWrapWord
+    return label
+}
+
+func vaulticEmptyState(label *widget.Label) *fyne.Container {
+    label.Alignment = fyne.TextAlignCenter
+    return container.NewVBox(layout.NewSpacer(), label, layout.NewSpacer())
+}
+
+func vaulticListLabel() fyne.CanvasObject {
+    label := widget.NewLabel("")
+    label.Truncation = fyne.TextTruncateEllipsis
+    return label
+}
+
+func vaulticSetButtonEnabled(button *widget.Button, enabled bool) {
+    if enabled {
+        button.Enable()
+    } else {
+        button.Disable()
+    }
+}
+
+func vaulticShowWindow(window fyne.Window, preferred, minimum fyne.Size) {
+    bounds := canvas.NewRectangle(color.Transparent)
+    bounds.SetMinSize(minimum)
+    window.SetContent(container.NewStack(bounds, window.Content()))
+    window.Resize(minimum)
+    window.CenterOnScreen()
+    window.Show()
+
+    // Fyne detects the display scale when the native window is created.
+    scale := max(1, window.Canvas().Scale())
+    window.Resize(fyne.NewSize(max(minimum.Width, preferred.Width/scale), max(minimum.Height, preferred.Height/scale)))
+    window.CenterOnScreen()
 }
