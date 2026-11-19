@@ -104,7 +104,9 @@ func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
         abs, err := filepath.Abs(source)
         if err != nil { return nil, err }
         if real, e := filepath.EvalSymlinks(abs); e == nil { abs = real }
-        if _, err := os.Stat(abs); err != nil { return nil, fmt.Errorf("Source %q : %w", abs, err) }
+        if _, err := os.Stat(abs); err != nil {
+            return nil, fmt.Errorf("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w", abs, err)
+        }
         if localRepo && vaulticContained(abs, repoAbs) {
             return nil, fmt.Errorf("Le dépôt %q ne doit pas se trouver dans une source sauvegardée (%q)", repoAbs, abs)
         }
@@ -132,12 +134,15 @@ func vaulticMain() {
     w.SetMaster()
 
     saved := vaulticLoadSettings()
-    sources := append([]string(nil), saved.Sources...)
-    for i, source := range sources {
-        if !filepath.IsAbs(source) {
-            sources[i] = vaulticResolvedRepository(source)
+    profileIndex := saved.migrateBackupProfiles()
+    for _, profile := range saved.Profiles {
+        for i, source := range profile.Sources {
+            if !filepath.IsAbs(source) {
+                profile.Sources[i] = vaulticResolvedRepository(source)
+            }
         }
     }
+    sources := saved.Profiles[profileIndex].Sources
     var snapshots []vaulticSnapshot
     selectedSource, selectedSnapshot := -1, -1
     sourceCountValue:=vaulticHeading(fmt.Sprintf("%d",len(sources)),24)
@@ -169,6 +174,11 @@ func vaulticMain() {
     status.Wrapping = fyne.TextWrapWord
     progress := widget.NewProgressBar()
     progress.Hide()
+    progressPlaceholder := canvas.NewRectangle(vaulticBackground)
+    progressPlaceholder.SetMinSize(fyne.NewSize(0, progress.MinSize().Height))
+    progressPlaceholder.Hide()
+    progressSlot := container.NewStack(progressPlaceholder, progress)
+    progressSlot.Hide()
     logs := widget.NewMultiLineEntry()
     logs.SetMinRowsVisible(4)
     logs.SetPlaceHolder("Aucun événement dans cette session.")
@@ -182,11 +192,18 @@ func vaulticMain() {
         logs.SetText(logText)
     }
     persist := func(depots []vaulticDepot, active string) error {
-        storedSources := make([]string, len(sources))
-        for i, source := range sources {
-            storedSources[i] = vaulticPortablePath(source)
+        profiles := make([]vaulticBackupProfile, len(saved.Profiles))
+        for i, profile := range saved.Profiles {
+            storedSources := make([]string, len(profile.Sources))
+            for j, source := range profile.Sources {
+                storedSources[j] = vaulticPortablePath(source)
+            }
+            profiles[i] = vaulticBackupProfile{Name: profile.Name, Sources: storedSources}
         }
-        return vaulticSaveSettings(vaulticSettings{Repository: active, Sources: storedSources, Depots: depots})
+        return vaulticSaveSettings(vaulticSettings{
+            Repository: active, Depots: depots, Sources: profiles[profileIndex].Sources,
+            Profiles: profiles, ActiveProfile: profiles[profileIndex].Name,
+        })
     }
     save := func() {
         if err := persist(saved.Depots, activeRepository); err != nil {
@@ -199,6 +216,14 @@ func vaulticMain() {
     var actionButtons []*widget.Button
     var updateActions func()
     var windowContent *fyne.Container
+    var lastBackupReport string
+    showBackupReport := func() {
+        content := container.NewVScroll(vaulticWrappedLabel(lastBackupReport))
+        content.SetMinSize(fyne.NewSize(340, 170))
+        reportDialog := dialog.NewCustom("Rapport de sauvegarde", "Fermer", content, w)
+        reportDialog.Resize(fyne.NewSize(490, 300))
+        reportDialog.Show()
+    }
     cancelButton := widget.NewButton("Arrêter", func() {
         if cancelOp != nil { cancelOp(); status.SetText("Annulation…") }
     })
@@ -215,6 +240,8 @@ func vaulticMain() {
         } else {
             cancelButton.Hide()
             progress.Hide()
+            progressPlaceholder.Hide()
+            progressSlot.Hide()
             repoEntry.Enable()
             depotName.Enable()
             passEntry.Enable()
@@ -227,24 +254,11 @@ func vaulticMain() {
 
     // Called from the restic worker's goroutines; all widget access is marshaled
     // onto Fyne's UI thread. restic emits native JSON backup progress.
-    onOutput := func(ctx context.Context, title, line string) {
+    onOutput := func(ctx context.Context, title, line string, report *vaulticBackupReport) {
         if line == "" { return }
-        var e struct {
-            MessageType string `json:"message_type"`
-            PercentDone float64 `json:"percent_done"`
-            FilesDone int64 `json:"files_done"`
-            FilesRestored int64 `json:"files_restored"`
-            TotalFiles int64 `json:"total_files"`
-            TotalBytes int64 `json:"total_bytes"`
-            FilesProcessed int64 `json:"total_files_processed"`
-            BytesProcessed int64 `json:"total_bytes_processed"`
-            BytesRestored int64 `json:"bytes_restored"`
-            SnapshotID string `json:"snapshot_id"`
-            Error struct {
-                Message string `json:"message"`
-            } `json:"error"`
-        }
+        var e vaulticEngineEvent
         if json.Unmarshal([]byte(line), &e) == nil {
+            if report != nil { report.record(e) }
             switch e.MessageType {
             case "status":
                 fyne.Do(func(){
@@ -253,15 +267,26 @@ func vaulticMain() {
                     progress.SetValue(e.PercentDone)
                     if !progress.Visible() {
                         progress.Show()
+                        progressSlot.Show()
                         windowContent.Refresh()
                     }
                 }
-                if e.TotalFiles > 0 {
+                if report != nil {
+                    files := fmt.Sprintf("%d fichiers", e.FilesDone)
+                    if e.TotalFiles > 0 { files = fmt.Sprintf("%d / %d fichiers", e.FilesDone, e.TotalFiles) }
+                    metrics := files + " · " + vaulticBytes(e.BytesDone)
+                    if e.TotalBytes > 0 { metrics += " / " + vaulticBytes(e.TotalBytes) }
+                    if e.SecondsElapsed > 0 {
+                        metrics += " · " + vaulticBytes(e.BytesDone / e.SecondsElapsed) + "/s"
+                    }
+                    status.SetText(metrics)
+                } else if e.TotalFiles > 0 {
                     status.SetText(fmt.Sprintf("%s en cours · %d / %d fichiers", title, e.FilesDone + e.FilesRestored, e.TotalFiles))
                 }
                 })
                 return
             case "summary":
+                if report != nil { return }
                 if e.SnapshotID != "" {
                     line = fmt.Sprintf("Instantané %s · %d fichier(s) traité(s), %d octets", e.SnapshotID, e.FilesProcessed, e.BytesProcessed)
                 } else if e.TotalFiles > 0 {
@@ -278,7 +303,7 @@ func vaulticMain() {
         fyne.Do(func(){ appendLog(line) })
     }
 
-    runWithDepot := func(title, repo, password string, create bool, fn func(context.Context, global.Options) error, finish func() error) {
+    runWithDepot := func(title, repo, password string, create bool, fn func(context.Context, global.Options) error, finish func() error, report *vaulticBackupReport) {
         if repo == "" || password == "" {
             dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
             return
@@ -289,12 +314,16 @@ func vaulticMain() {
         }
         ctx, cancel := context.WithCancel(context.Background())
         cancelOp = cancel
+        if report != nil {
+            progressPlaceholder.Show()
+            progressSlot.Show()
+        }
         setBusy(true)
         progress.SetValue(0)
         status.SetText(title+"…")
         appendLog("Début : "+title)
         go func(){
-            terminal := &vaulticTerminal{line:func(line string){onOutput(ctx, title, line)},output:io.Discard}
+            terminal := &vaulticTerminal{line:func(line string){onOutput(ctx, title, line, report)},output:io.Discard}
             gopts := global.Options{
                 Repo: vaulticResolvedRepository(repo), Password: password, Backends: all.Backends(),
                 Term:terminal, JSON:true, Verbosity:1,
@@ -312,6 +341,19 @@ func vaulticMain() {
                 cancel()
                 cancelOp = nil
                 busy.Store(false)
+                if errors.Is(err, repository.ErrNoKeyFound) {
+                    err = errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
+                }
+                if report != nil {
+                    var outcome string
+                    outcome, lastBackupReport, err = report.result(err)
+                    status.SetText("Sauvegarde · " + outcome)
+                    appendLog("Sauvegarde · " + lastBackupReport)
+                    if err == nil { recentRunValue.SetText(title) }
+                    setBusy(false)
+                    showBackupReport()
+                    return
+                }
                 setBusy(false)
                 if errors.Is(err, context.Canceled) {
                     status.SetText(title + " — annulé")
@@ -320,9 +362,6 @@ func vaulticMain() {
                 }
                 if err == nil && finish != nil {
                     err = finish()
-                }
-                if errors.Is(err, repository.ErrNoKeyFound) {
-                    err = errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
                 }
                 if err != nil {
                     status.SetText("Erreur : "+title)
@@ -337,7 +376,7 @@ func vaulticMain() {
         }()
     }
     run := func(title string, fn func(context.Context, global.Options) error) {
-        runWithDepot(title, activeRepository, passEntry.Text, false, fn, nil)
+        runWithDepot(title, activeRepository, passEntry.Text, false, fn, nil, nil)
     }
 
     browseRepo := widget.NewButton("Parcourir…", func(){
@@ -393,7 +432,7 @@ func vaulticMain() {
             repoEntry.SetText("")
             newPassword.SetText("")
             return nil
-        })
+        }, nil)
     }
     initButton := widget.NewButton("Créer un dépôt", func(){ connectDepot(true) })
     connectButton := widget.NewButton("Ouvrir un dépôt existant", func(){ connectDepot(false) })
@@ -426,37 +465,125 @@ func vaulticMain() {
         sourceCountValue.Text = fmt.Sprintf("%d",len(sources))
         sourceCountValue.Refresh()
         updateActions()
-        save()
+    }
+    updateSources := func(next []string) {
+        previous := sources
+        saved.Profiles[profileIndex].Sources = next
+        if err := persist(saved.Depots, activeRepository); err != nil {
+            saved.Profiles[profileIndex].Sources = previous
+            dialog.ShowError(err, w)
+            return
+        }
+        sourcesList.UnselectAll()
+        sources = next
+        refreshSources()
     }
     addFolder := widget.NewButton("+ Dossier",func(){
         dialog.NewFolderOpen(func(uri fyne.ListableURI,err error){
             if err != nil { dialog.ShowError(err,w);return }
-            if uri != nil { sources=vaulticAppendUnique(sources,uri.Path()); refreshSources() }
+            if uri != nil { updateSources(vaulticAppendUnique(sources,uri.Path())) }
         },w).Show()
     })
     addFile := widget.NewButton("+ Fichier",func(){
         dialog.NewFileOpen(func(f fyne.URIReadCloser,err error){
             if err != nil {dialog.ShowError(err,w);return}
-            if f != nil { path:=f.URI().Path(); _=f.Close(); sources=vaulticAppendUnique(sources,path); refreshSources() }
+            if f != nil { path:=f.URI().Path(); _=f.Close(); updateSources(vaulticAppendUnique(sources,path)) }
         },w).Show()
     })
     removeSource := widget.NewButton("Retirer",func(){
         if selectedSource<0 || selectedSource>=len(sources){return}
-        sources=append(sources[:selectedSource],sources[selectedSource+1:]...)
-        sourcesList.UnselectAll()
-        refreshSources()
+        next := append([]string(nil), sources[:selectedSource]...)
+        next = append(next, sources[selectedSource+1:]...)
+        updateSources(next)
     })
+    profileSelect := widget.NewSelect(nil, nil)
+    refreshProfiles := func() {
+        names := make([]string, len(saved.Profiles))
+        for i, profile := range saved.Profiles { names[i] = profile.Name }
+        profileSelect.SetOptions(names)
+        if profileSelect.Selected != names[profileIndex] {
+            profileSelect.SetSelected(names[profileIndex])
+        }
+    }
+    applyProfiles := func(next []vaulticBackupProfile, index int) bool {
+        previousProfiles, previousIndex := saved.Profiles, profileIndex
+        saved.Profiles, profileIndex = next, index
+        if err := persist(saved.Depots, activeRepository); err != nil {
+            saved.Profiles, profileIndex = previousProfiles, previousIndex
+            refreshProfiles()
+            dialog.ShowError(err, w)
+            return false
+        }
+        sourcesList.UnselectAll()
+        sources = saved.Profiles[profileIndex].Sources
+        refreshProfiles()
+        refreshSources()
+        return true
+    }
+    profileSelect.OnChanged = func(name string) {
+        for index, profile := range saved.Profiles {
+            if profile.Name == name && index != profileIndex {
+                applyProfiles(saved.Profiles, index)
+                return
+            }
+        }
+    }
+    editProfile := func(create bool) {
+        title := "Renommer le profil"
+        name := widget.NewEntry()
+        if create {
+            title = "Nouveau profil"
+        } else {
+            name.SetText(saved.Profiles[profileIndex].Name)
+        }
+        form := dialog.NewForm(title, "Enregistrer", "Annuler", []*widget.FormItem{
+            widget.NewFormItem("Nom", name),
+        }, func(ok bool) {
+            if !ok { return }
+            label := strings.TrimSpace(name.Text)
+            if label == "" || len([]rune(label)) > 40 {
+                dialog.ShowInformation("Nom du profil", "Saisissez un nom de 1 à 40 caractères.", w)
+                return
+            }
+            for i, profile := range saved.Profiles {
+                if strings.EqualFold(profile.Name, label) && (create || i != profileIndex) {
+                    dialog.ShowInformation("Nom déjà utilisé", "Choisissez un autre nom pour ce profil.", w)
+                    return
+                }
+            }
+            next := append([]vaulticBackupProfile(nil), saved.Profiles...)
+            index := profileIndex
+            if create {
+                index = len(next)
+                next = append(next, vaulticBackupProfile{Name: label})
+            } else {
+                next[index].Name = label
+            }
+            applyProfiles(next, index)
+        }, w)
+        form.Show()
+        w.Canvas().Focus(name)
+    }
+    newProfileButton := widget.NewButton("Nouveau…", func(){editProfile(true)})
+    renameProfileButton := widget.NewButton("Renommer…", func(){editProfile(false)})
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         selected := append([]string(nil), sources...)
-        repo := activeRepository
-        clean,err:=vaulticSourcesForBackup(repo,selected)
-        if err != nil {dialog.ShowError(err,w);return}
-        run("Sauvegarde",func(ctx context.Context,g global.Options)error{
+        report := &vaulticBackupReport{started: time.Now(), profile: saved.Profiles[profileIndex].Name}
+        runWithDepot("Sauvegarde", activeRepository, passEntry.Text, false, func(ctx context.Context,g global.Options)error{
+            clean, err := vaulticSourcesForBackup(g.Repo, selected)
+            if err != nil { return err }
+            if err := ctx.Err(); err != nil { return err }
             host, _ := os.Hostname()
             opts:= BackupOptions{Host:host,GroupBy:data.SnapshotGroupByOptions{Host:true,Path:true}}
-            return runBackup(ctx,opts,g,g.Term,clean)
-        })
+            err = runBackup(ctx,opts,g,g.Term,clean)
+            // restic can format the underlying context error as plain text.
+            if err != nil && ctx.Err() != nil && !errors.Is(err, ErrInvalidSourceData) {
+                return ctx.Err()
+            }
+            return err
+        }, nil, report)
     })
+    backupReportButton := widget.NewButton("Dernier rapport…", showBackupReport)
     backupButton.Importance=widget.HighImportance
     sourceSection:=container.NewBorder(
         container.NewVBox(widget.NewLabelWithStyle("Sources",fyne.TextAlignLeading,fyne.TextStyle{Bold:true}),container.NewHBox(addFolder,addFile,removeSource)),
@@ -569,7 +696,7 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton,newProfileButton,renameProfileButton}
     updateActions = func() {
         if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
         if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
@@ -579,11 +706,13 @@ func vaulticMain() {
             snapshotEmptyLabel.SetText("Actualisez l’historique pour afficher les instantanés du dépôt.")
         }
         vaulticSetButtonEnabled(backupButton, !busy.Load() && len(sources) > 0)
+        vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
         vaulticSetButtonEnabled(removeSource, !busy.Load() && selectedSource >= 0)
         canRestore := !busy.Load() && selectedSnapshot >= 0
         vaulticSetButtonEnabled(explorerButton, canRestore)
         vaulticSetButtonEnabled(restoreButton, canRestore)
         vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
+        if busy.Load() { profileSelect.Disable() } else { profileSelect.Enable() }
         if busy.Load() || len(saved.Depots) == 0 {
             depotSelect.Disable()
         } else {
@@ -673,10 +802,14 @@ func vaulticMain() {
         container.NewHBox(startBackup,setupButton),statGrid,snapshotOverview,
     )))
     backupPage:=container.NewBorder(
-        container.NewPadded(vaulticPageHeading("Sauvegarde","Choisissez les fichiers et dossiers à sauvegarder.")),
+        container.NewPadded(container.NewVBox(
+            vaulticHeading("Sauvegarde", 26),
+            widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil,nil,nil,
+                container.NewHBox(newProfileButton, renameProfileButton), profileSelect))),
+        )),
         container.NewPadded(vaulticSurface(container.NewVBox(
             vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
-            backupButton,
+            container.NewGridWithColumns(2, backupButton, backupReportButton),
         ))),
         nil,nil,
         container.NewPadded(vaulticSurface(sourceSection)),
@@ -756,12 +889,13 @@ func vaulticMain() {
     statusTitle:=widget.NewLabelWithStyle("ÉTAT",fyne.TextAlignLeading,fyne.TextStyle{Bold:true})
     statusBar:=container.NewVBox(
         widget.NewSeparator(),
+        progressSlot,
         container.NewBorder(nil,nil,statusTitle,cancelButton,status),
-        progress,
     )
     if activeRepository == "" { navigate(5) } else { navigate(0) }
     windowContent = container.NewBorder(nil,container.NewPadded(statusBar),sidebar,nil,mainPage)
     refreshDepots()
+    refreshProfiles()
     w.SetContent(windowContent)
     w.SetCloseIntercept(func(){
         if busy.Load(){dialog.ShowInformation("Opération en cours","Arrêtez l'opération avant de quitter Vaultic.",w);return}

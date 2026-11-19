@@ -28,3 +28,16 @@ func TestVaulticRejectsDepotCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestVaulticMigrateBackupProfiles(t *testing.T) {
+	settings := vaulticSettings{Sources: []string{"documents"}}
+	index := settings.migrateBackupProfiles()
+	if index != 0 || len(settings.Profiles) != 1 || settings.Profiles[0].Sources[0] != "documents" {
+		t.Fatalf("legacy sources were not retained: %+v", settings)
+	}
+	settings.Profiles = append(settings.Profiles, vaulticBackupProfile{Name: "Photos", Sources: []string{"images"}})
+	settings.ActiveProfile = "Photos"
+	if index := settings.migrateBackupProfiles(); index != 1 || settings.Profiles[index].Sources[0] != "images" {
+		t.Fatalf("saved profile was not selected: %+v", settings)
+	}
+}

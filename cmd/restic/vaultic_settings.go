@@ -18,9 +18,28 @@ type vaulticDepot struct {
 }
 
 type vaulticSettings struct {
-	Repository string         `json:"repository"`
-	Sources    []string       `json:"sources"`
-	Depots     []vaulticDepot `json:"depots,omitempty"`
+	Repository    string                 `json:"repository"`
+	Sources       []string               `json:"sources"`
+	Depots        []vaulticDepot         `json:"depots,omitempty"`
+	Profiles      []vaulticBackupProfile `json:"backup_profiles,omitempty"`
+	ActiveProfile string                 `json:"active_backup_profile,omitempty"`
+}
+
+type vaulticBackupProfile struct {
+	Name    string   `json:"name"`
+	Sources []string `json:"sources"`
+}
+
+func (s *vaulticSettings) migrateBackupProfiles() int {
+	if len(s.Profiles) == 0 {
+		s.Profiles = []vaulticBackupProfile{{Name: "Par défaut", Sources: s.Sources}}
+	}
+	for i, profile := range s.Profiles {
+		if profile.Name == s.ActiveProfile {
+			return i
+		}
+	}
+	return 0
 }
 
 func vaulticValidateDepot(value string) error {
