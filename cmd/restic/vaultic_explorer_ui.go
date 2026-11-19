@@ -104,12 +104,12 @@ func vaulticOpenExplorer(app fyne.App,snapshot vaulticSnapshot,run func(string,f
         },w).Show()
     }
     w.SetContent(container.NewBorder(
-        container.NewVBox(
-            widget.NewLabelWithStyle("Contenu de l'instantané",fyne.TextAlignLeading,fyne.TextStyle{Bold:true}),
+        container.NewPadded(container.NewVBox(
+            vaulticPageHeading("EXPLORATEUR","Contenu de l'instantané","Parcourez les dossiers pour trouver précisément vos fichiers."),
             location,container.NewHBox(back,open),
-        ),
-        container.NewVBox(widget.NewSeparator(),selection,restore),
-        nil,nil,files,
+        )),
+        container.NewPadded(vaulticSurface(container.NewVBox(selection,restore))),
+        nil,nil,container.NewPadded(vaulticSurface(files)),
     ))
     w.Show()
     load("/")

@@ -46,6 +46,19 @@ go build -o vaultic ./cmd/restic
 
 Les commandes `go mod tidy` / `go build` peuvent télécharger les **dépendances Go tierces** (dont Fyne), comme dans tout projet Go. **Elles ne clonent pas restic**, dont les sources sont intégrées. Un lancement sans argument ouvre le GUI ; des arguments utilisent les commandes historiques restic (`vaultic version`, par exemple).
 
+## Interface Vaultic
+
+L'interface de bureau Fyne utilise une palette nuit bleu profond avec un accent turquoise, des surfaces arrondies et une navigation latérale. **Chaque écran a une fonction claire** :
+
+- **Vue d'ensemble** : informations du dépôt, nombre de sources, instantanés consultés et activité de la session.
+- **Sauvegarde** : choix des fichiers et dossiers à protéger, lancement manuel.
+- **Instantanés** : historique, explorateur et restauration complète ou sélective.
+- **Intégrité** : vérification du dépôt sans suppression.
+- **Activité** : journal de la session et messages restic.
+- **Paramètres** : chemin du dépôt, mot de passe en mémoire et initialisation.
+
+Les données de tableau de bord restent volontairement neutres lorsqu'aucun instantané n'a été chargé : **Vaultic n'affiche jamais « protégé » sur la base d'informations inventées**. Le design est appliqué directement dans `cmd/restic/vaultic_ui_style.go`, `vaultic_ui_brand.go` et `vaultic_gui.go` : aucun framework web ni programme externe n'est nécessaire.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
