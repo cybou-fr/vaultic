@@ -28,6 +28,8 @@ import (
     "github.com/restic/restic/internal/backend/all"
     "github.com/restic/restic/internal/data"
     "github.com/restic/restic/internal/global"
+    "github.com/restic/restic/internal/repository"
+    "github.com/restic/restic/internal/restic"
     "github.com/restic/restic/internal/restorer"
     "github.com/restic/restic/internal/ui"
 )
@@ -61,6 +63,7 @@ func (t *vaulticTerminal) OutputRaw() io.Writer { return t.OutputWriter() }
 func (t *vaulticTerminal) OutputIsTerminal() bool { return false }
 
 func vaulticLocalRepository(repo string) bool {
+    if strings.HasPrefix(repo, "local:") { return true }
     if strings.Contains(repo, "://") { return false }
     if len(repo) >= 2 && repo[1] == ':' {
         return (repo[0] >= 'A' && repo[0] <= 'Z') || (repo[0] >= 'a' && repo[0] <= 'z')
@@ -72,6 +75,7 @@ func vaulticLocalRepository(repo string) bool {
 // This keeps a portable SSD installation stable when its drive letter changes.
 func vaulticResolvedRepository(repo string) string {
     repo = strings.TrimSpace(repo)
+    repo = strings.TrimPrefix(repo, "local:")
     if repo == "" || !vaulticLocalRepository(repo) || filepath.IsAbs(repo) {
         return repo
     }
@@ -129,6 +133,11 @@ func vaulticMain() {
 
     saved := vaulticLoadSettings()
     sources := append([]string(nil), saved.Sources...)
+    for i, source := range sources {
+        if !filepath.IsAbs(source) {
+            sources[i] = vaulticResolvedRepository(source)
+        }
+    }
     var snapshots []vaulticSnapshot
     selectedSource, selectedSnapshot := -1, -1
     sourceCountValue:=vaulticHeading(fmt.Sprintf("%d",len(sources)),24)
@@ -138,17 +147,23 @@ func vaulticMain() {
     recentSnapshotValue:=widget.NewLabel("Aucun instantané consulté")
     recentSnapshotValue.Wrapping=fyne.TextWrapWord
 
+    activeRepository := saved.Repository
     repoEntry := widget.NewEntry()
-    repoEntry.SetPlaceHolder("Ex. : D:\\Sauvegardes\\Vaultic ou /media/ssd/vaultic")
-    repoEntry.SetText(saved.Repository)
+    repoEntry.SetPlaceHolder("Chemin local ou adresse rest:https://…")
+    depotName := widget.NewEntry()
+    depotName.SetPlaceHolder("Ex. : Disque externe")
+    depotSelect := widget.NewSelect(nil, nil)
+    depotSelect.PlaceHolder = "Aucun dépôt connecté"
     repoValue:=widget.NewLabel("Aucun dépôt configuré")
     repoValue.Wrapping=fyne.TextWrapWord
-    repoEntry.OnChanged=func(value string){
+    updateRepositoryLabel := func(value string){
         if strings.TrimSpace(value)==""{repoValue.SetText("Aucun dépôt configuré")}else{repoValue.SetText(strings.TrimSpace(value))}
     }
-    repoEntry.OnChanged(saved.Repository)
+    updateRepositoryLabel(activeRepository)
     passEntry := widget.NewPasswordEntry()
     passEntry.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré")
+    newPassword := widget.NewPasswordEntry()
+    newPassword.SetPlaceHolder("Mot de passe du dépôt")
 
     status := widget.NewLabel("Prêt")
     status.Wrapping = fyne.TextWrapWord
@@ -166,8 +181,15 @@ func vaulticMain() {
         if len(logText) > 16000 { logText = logText[len(logText)-12000:] }
         logs.SetText(logText)
     }
+    persist := func(depots []vaulticDepot, active string) error {
+        storedSources := make([]string, len(sources))
+        for i, source := range sources {
+            storedSources[i] = vaulticPortablePath(source)
+        }
+        return vaulticSaveSettings(vaulticSettings{Repository: active, Sources: storedSources, Depots: depots})
+    }
     save := func() {
-        if err := vaulticSaveSettings(vaulticSettings{Repository: strings.TrimSpace(repoEntry.Text), Sources: append([]string(nil), sources...)}); err != nil {
+        if err := persist(saved.Depots, activeRepository); err != nil {
             appendLog("Erreur d'enregistrement des préférences : "+err.Error())
         }
     }
@@ -186,12 +208,17 @@ func vaulticMain() {
             cancelButton.Enable()
             cancelButton.Show()
             repoEntry.Disable()
+            depotName.Disable()
+            depotSelect.Disable()
             passEntry.Disable()
+            newPassword.Disable()
         } else {
             cancelButton.Hide()
             progress.Hide()
             repoEntry.Enable()
+            depotName.Enable()
             passEntry.Enable()
+            newPassword.Enable()
         }
         for _, b := range actionButtons { if on { b.Disable() } else { b.Enable() } }
         updateActions()
@@ -251,8 +278,7 @@ func vaulticMain() {
         fyne.Do(func(){ appendLog(line) })
     }
 
-    run := func(title string, fn func(context.Context, global.Options) error) {
-        repo, password := strings.TrimSpace(repoEntry.Text), passEntry.Text
+    runWithDepot := func(title, repo, password string, create bool, fn func(context.Context, global.Options) error, finish func() error) {
         if repo == "" || password == "" {
             dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
             return
@@ -261,7 +287,6 @@ func vaulticMain() {
             dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", w)
             return
         }
-        save()
         ctx, cancel := context.WithCancel(context.Background())
         cancelOp = cancel
         setBusy(true)
@@ -274,7 +299,15 @@ func vaulticMain() {
                 Repo: vaulticResolvedRepository(repo), Password: password, Backends: all.Backends(),
                 Term:terminal, JSON:true, Verbosity:1,
             }
-            err := fn(ctx, gopts)
+            var err error
+            if !create && vaulticLocalRepository(repo) {
+                if _, statErr := os.Stat(gopts.Repo); statErr != nil {
+                    err = fmt.Errorf("dépôt inaccessible. Vérifiez le chemin et le branchement du disque : %w", statErr)
+                }
+            }
+            if err == nil {
+                err = fn(ctx, gopts)
+            }
             fyne.Do(func(){
                 cancel()
                 cancelOp = nil
@@ -284,6 +317,12 @@ func vaulticMain() {
                     status.SetText(title + " — annulé")
                     appendLog("Annulé : " + title)
                     return
+                }
+                if err == nil && finish != nil {
+                    err = finish()
+                }
+                if errors.Is(err, repository.ErrNoKeyFound) {
+                    err = errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
                 }
                 if err != nil {
                     status.SetText("Erreur : "+title)
@@ -297,17 +336,69 @@ func vaulticMain() {
             })
         }()
     }
+    run := func(title string, fn func(context.Context, global.Options) error) {
+        runWithDepot(title, activeRepository, passEntry.Text, false, fn, nil)
+    }
 
     browseRepo := widget.NewButton("Parcourir…", func(){
         dialog.NewFolderOpen(func(uri fyne.ListableURI, err error){
             if err != nil { dialog.ShowError(err,w); return }
-            if uri != nil { repoEntry.SetText(uri.Path()); save() }
+            if uri != nil { repoEntry.SetText(uri.Path()) }
         },w).Show()
     })
-    initButton := widget.NewButton("Initialiser le dépôt",func(){
-        run("Initialisation",func(ctx context.Context,g global.Options)error{
-            return runInit(ctx,InitOptions{RepositoryVersion:"stable"},g,nil,g.Term)
+    var activateDepot func(string, string)
+    var refreshDepots func()
+    connectDepot := func(create bool) {
+        name, address := strings.TrimSpace(depotName.Text), strings.TrimSpace(repoEntry.Text)
+        if name == "" || newPassword.Text == "" {
+            dialog.ShowInformation("Informations manquantes", "Indiquez le nom et le mot de passe du dépôt.", w)
+            return
+        }
+        if err := vaulticValidateDepot(address); err != nil {
+            dialog.ShowError(err, w)
+            return
+        }
+        if vaulticLocalRepository(address) {
+            localPath := strings.TrimPrefix(address, "local:")
+            if filepath.IsAbs(localPath) {
+                address = vaulticPortablePath(localPath)
+            } else {
+                address = filepath.Clean(localPath)
+            }
+        }
+        for _, depot := range saved.Depots {
+            if depot.Name == name || vaulticResolvedRepository(depot.Location) == vaulticResolvedRepository(address) {
+                dialog.ShowInformation("Dépôt déjà enregistré", "Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré.", w)
+                return
+            }
+        }
+        password := newPassword.Text
+        title := "Connexion au dépôt"
+        if create { title = "Création du dépôt" }
+        runWithDepot(title, address, password, create, func(ctx context.Context, g global.Options) error {
+            if create {
+                printer := ui.NewProgressPrinter(g.JSON, g.Verbosity, g.Term)
+                repo, err := global.CreateRepository(ctx, g, restic.StableRepoVersion, nil, printer)
+                if err != nil { return err }
+                return repo.Close()
+            }
+            return vaulticVerifyDepot(ctx, g)
+        }, func() error {
+            depots := append(append([]vaulticDepot(nil), saved.Depots...), vaulticDepot{Name:name, Location:address})
+            if err := persist(depots, address); err != nil { return err }
+            saved.Depots = depots
+            activateDepot(address, password)
+            refreshDepots()
+            depotName.SetText("")
+            repoEntry.SetText("")
+            newPassword.SetText("")
+            return nil
         })
+    }
+    initButton := widget.NewButton("Créer un dépôt", func(){ connectDepot(true) })
+    connectButton := widget.NewButton("Ouvrir un dépôt existant", func(){ connectDepot(false) })
+    verifyButton := widget.NewButton("Vérifier la connexion", func() {
+        run("Vérification de la connexion", vaulticVerifyDepot)
     })
 
     sourcesEmpty := vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
@@ -357,7 +448,7 @@ func vaulticMain() {
     })
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         selected := append([]string(nil), sources...)
-        repo := strings.TrimSpace(repoEntry.Text)
+        repo := activeRepository
         clean,err:=vaulticSourcesForBackup(repo,selected)
         if err != nil {dialog.ShowError(err,w);return}
         run("Sauvegarde",func(ctx context.Context,g global.Options)error{
@@ -438,9 +529,9 @@ func vaulticMain() {
             dialog.ShowInformation("Sélection requise","Sélectionnez un instantané.",w)
             return
         }
-        repository := vaulticResolvedRepository(repoEntry.Text)
+        repository := vaulticResolvedRepository(activeRepository)
         vaulticOpenExplorer(a,snapshots[selectedSnapshot],func(title string, operation func(context.Context, global.Options) error) {
-            if repository != vaulticResolvedRepository(repoEntry.Text) {
+            if repository != vaulticResolvedRepository(activeRepository) {
                 dialog.ShowInformation("Dépôt modifié", "Actualisez les instantanés du dépôt actif avant de les parcourir.", w)
                 return
             }
@@ -478,7 +569,7 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,addFolder,addFile,refreshButton,checkButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton}
     updateActions = func() {
         if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
         if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
@@ -492,14 +583,17 @@ func vaulticMain() {
         canRestore := !busy.Load() && selectedSnapshot >= 0
         vaulticSetButtonEnabled(explorerButton, canRestore)
         vaulticSetButtonEnabled(restoreButton, canRestore)
+        vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
+        if busy.Load() || len(saved.Depots) == 0 {
+            depotSelect.Disable()
+        } else {
+            depotSelect.Enable()
+        }
     }
-    updateRepositoryLabel := repoEntry.OnChanged
-    repository := strings.TrimSpace(repoEntry.Text)
-    repoEntry.OnChanged = func(value string) {
-        updateRepositoryLabel(value)
-        next := strings.TrimSpace(value)
-        if next == repository { return }
-        repository = next
+    activateDepot = func(address, password string) {
+        activeRepository = address
+        passEntry.SetText(password)
+        updateRepositoryLabel(address)
         snapshots = nil
         snapshotsLoaded = false
         resetSnapshotSelection()
@@ -508,18 +602,51 @@ func vaulticMain() {
         snapshotCountValue.Refresh()
         recentSnapshotValue.SetText("Aucun instantané consulté")
     }
+    refreshDepots = func() {
+        names := make([]string, 0, len(saved.Depots))
+        activeName := ""
+        for _, depot := range saved.Depots {
+            names = append(names, depot.Name)
+            if depot.Location == activeRepository { activeName = depot.Name }
+        }
+        depotSelect.SetOptions(names)
+        if activeName != "" && depotSelect.Selected != activeName {
+            depotSelect.SetSelected(activeName)
+        }
+        updateActions()
+    }
+    depotSelect.OnChanged = func(name string) {
+        for _, depot := range saved.Depots {
+            if depot.Name != name || depot.Location == activeRepository { continue }
+            if err := persist(saved.Depots, depot.Location); err != nil {
+                refreshDepots()
+                dialog.ShowError(err, w)
+                return
+            }
+            activateDepot(depot.Location, "")
+            return
+        }
+    }
 
     // Every page has one purpose. Operations still invoke the original Go
     // restic engine; this shell only changes presentation and navigation.
     fields:=widget.NewForm(
-        widget.NewFormItem("Dépôt",container.NewBorder(nil,nil,nil,browseRepo,repoEntry)),
-        widget.NewFormItem("Mot de passe",passEntry),
+        widget.NewFormItem("Nom",depotName),
+        widget.NewFormItem("Emplacement",container.NewBorder(nil,nil,nil,browseRepo,repoEntry)),
+        widget.NewFormItem("Mot de passe",newPassword),
     )
     repositoryConfiguration:=vaulticSurface(container.NewVBox(
-        vaulticHeading("Dépôt de sauvegarde",20),
-        vaulticWrappedLabel("Indiquez le chemin d’un dépôt existant ou initialisez un nouveau dépôt."),
+        vaulticHeading("Ajouter un dépôt",20),
+        vaulticWrappedLabel("Choisissez un dossier local ou un disque externe, ou saisissez une adresse de dépôt distant."),
         fields,
-        container.NewHBox(initButton),
+        container.NewHBox(initButton,connectButton),
+    ))
+    activeConfiguration:=vaulticSurface(container.NewVBox(
+        vaulticHeading("Dépôt actif",20),
+        depotSelect,
+        vaulticWrappedLabel("Sélectionnez un dépôt enregistré, puis saisissez son mot de passe pour l’utiliser."),
+        passEntry,
+        verifyButton,
     ))
 
     startBackup:=widget.NewButtonWithIcon("Préparer une sauvegarde",theme.MediaPlayIcon(),nil)
@@ -586,6 +713,7 @@ func vaulticMain() {
     settingsPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
         vaulticHeading("Paramètres",26),
         repositoryConfiguration,
+        activeConfiguration,
         vaulticSurface(container.NewVBox(
             vaulticHeading("À propos de Vaultic",19),
             vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),
@@ -631,9 +759,9 @@ func vaulticMain() {
         container.NewBorder(nil,nil,statusTitle,cancelButton,status),
         progress,
     )
-    navigate(0)
+    if activeRepository == "" { navigate(5) } else { navigate(0) }
     windowContent = container.NewBorder(nil,container.NewPadded(statusBar),sidebar,nil,mainPage)
-    updateActions()
+    refreshDepots()
     w.SetContent(windowContent)
     w.SetCloseIntercept(func(){
         if busy.Load(){dialog.ShowInformation("Opération en cours","Arrêtez l'opération avant de quitter Vaultic.",w);return}
@@ -643,6 +771,14 @@ func vaulticMain() {
     })
     vaulticShowWindow(w, fyne.NewSize(1180,760), fyne.NewSize(640,365))
     a.Run()
+}
+
+func vaulticVerifyDepot(ctx context.Context, g global.Options) error {
+    g.NoCache = true
+    printer := ui.NewProgressPrinter(g.JSON, g.Verbosity, g.Term)
+    repo, err := global.OpenRepository(ctx, g, printer)
+    if err != nil { return err }
+    return repo.Close()
 }
 
 func vaulticAppendUnique(paths []string, path string) []string {

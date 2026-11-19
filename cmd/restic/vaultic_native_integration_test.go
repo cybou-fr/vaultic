@@ -4,6 +4,7 @@ import (
     "bytes"
     "context"
     "encoding/json"
+    "errors"
     "io/fs"
     "os"
     "path/filepath"
@@ -12,6 +13,7 @@ import (
     "github.com/restic/restic/internal/backend/all"
     "github.com/restic/restic/internal/data"
     "github.com/restic/restic/internal/global"
+    "github.com/restic/restic/internal/repository"
 )
 
 // This is intentionally an in-process integration test: it invokes the same
@@ -41,6 +43,14 @@ func TestVaulticNativeEngineRoundTrip(t *testing.T) {
     ctx := context.Background()
     if err := runInit(ctx, InitOptions{RepositoryVersion: "stable"}, opts, nil, term); err != nil {
         t.Fatalf("native init: %v", err)
+    }
+    if err := vaulticVerifyDepot(ctx, opts); err != nil {
+        t.Fatalf("verify depot: %v", err)
+    }
+    wrong := opts
+    wrong.Password = "incorrect-test-password"
+    if err := vaulticVerifyDepot(ctx, wrong); !errors.Is(err, repository.ErrNoKeyFound) {
+        t.Fatalf("wrong password: got %v", err)
     }
     sources, err := vaulticSourcesForBackup(repoPath, []string{sourcePath})
     if err != nil { t.Fatalf("validate sources: %v", err) }

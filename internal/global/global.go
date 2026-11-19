@@ -298,7 +298,7 @@ func readRepo(gopts Options) (string, error) {
 const maxKeys = 20
 
 // OpenRepository reads the password and opens the repository.
-func OpenRepository(ctx context.Context, gopts Options, printer progress.Printer) (*repository.Repository, error) {
+func OpenRepository(ctx context.Context, gopts Options, printer progress.Printer) (_ *repository.Repository, err error) {
 	repo, err := readRepo(gopts)
 	if err != nil {
 		return nil, err
@@ -308,6 +308,11 @@ func OpenRepository(ctx context.Context, gopts Options, printer progress.Printer
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			_ = be.Close()
+		}
+	}()
 
 	err = hasRepositoryConfig(ctx, be, repo, gopts)
 	if err != nil {
@@ -461,7 +466,7 @@ func setupCache(s *repository.Repository, gopts Options, printer progress.Printe
 }
 
 // CreateRepository a repository with the given version and chunker polynomial.
-func CreateRepository(ctx context.Context, gopts Options, version uint, chunkerPolynomial *chunker.Pol, printer progress.Printer) (*repository.Repository, error) {
+func CreateRepository(ctx context.Context, gopts Options, version uint, chunkerPolynomial *chunker.Pol, printer progress.Printer) (_ *repository.Repository, err error) {
 	if version < restic.MinRepoVersion || version > restic.MaxRepoVersion {
 		return nil, errors.Fatalf("only repository versions between %v and %v are allowed", restic.MinRepoVersion, restic.MaxRepoVersion)
 	}
@@ -482,6 +487,11 @@ func CreateRepository(ctx context.Context, gopts Options, version uint, chunkerP
 	if err != nil {
 		return nil, errors.Fatalf("create repository at %s failed: %v", location.StripPassword(gopts.Backends, repo), err)
 	}
+	defer func() {
+		if err != nil {
+			_ = be.Close()
+		}
+	}()
 
 	s, err := createRepositoryInstance(be, gopts)
 	if err != nil {
