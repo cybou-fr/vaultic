@@ -147,6 +147,28 @@ Chaque dépôt enregistré affiche son nom, son fournisseur, son emplacement (sa
 - Swift : Keystone v3 uniquement ; Application Credential par ID. L'URL Keystone doit être en HTTPS (HTTP seulement vers localhost), se terminer par `/v3` et ne contenir ni identifiants, ni paramètres, ni fragment ; elle est normalisée avant d'être gardée en mémoire.
 - Google Cloud : pas de saisie de clé dans Vaultic (ADC uniquement).
 
+## Automatisation des sauvegardes
+
+Dans **Sauvegarde → Automatisation**, chaque profil possède sa propre planification : *manuelle uniquement*, *toutes les N heures*, *tous les jours à une heure choisie*, *chaque semaine* (jours au choix) ou *chaque mois* (jour au choix ; le 29, 30 ou 31 devient le dernier jour d'un mois plus court). Les heures sont celles du fuseau horaire local de l'ordinateur. Les options secondaires (jours, jour du mois, notifications) sont sous **Options avancées**.
+
+La page affiche la fréquence, la **prochaine exécution**, la **dernière sauvegarde réussie**, l'activité en cours, l'historique récent et un bouton **Mettre en pause / Reprendre la planification**.
+
+**Fonctionnement**
+
+- Le planificateur ne travaille que **pendant que Vaultic est ouvert**. Il n'y a ni service Windows, ni tâche du planificateur système, ni processus caché.
+- Une sauvegarde planifiée ne démarre que si un dépôt est actif et que son **mot de passe est saisi** (il n'est jamais enregistré). Sinon elle reste « en retard », ce qui est signalé une seule fois et n'est jamais présenté comme une sauvegarde réalisée ; elle est effectuée dès que le mot de passe est disponible.
+- **Pas d'arriéré** : si plusieurs échéances ont été manquées (application fermée, ordinateur en veille, horloge modifiée), une seule sauvegarde de rattrapage est lancée. Reprendre après une pause ne rattrape rien.
+- **Un seul traitement restic à la fois** : les sauvegardes manuelles, planifiées et les autres opérations partagent le même moteur. Si le moteur est occupé, la sauvegarde planifiée est reportée de 5 minutes, 3 fois au plus, puis **ignorée et consignée** jusqu'à l'échéance suivante. Il n'y a aucune nouvelle tentative silencieuse après un échec.
+- Une sauvegarde n'est « réussie » que si restic confirme un identifiant d'instantané et n'a signalé aucun fichier illisible.
+- Changements d'heure d'été/hiver, de fuseau horaire et d'horloge sont gérés : une échéance n'a lieu qu'une fois par jour calendaire, et une horloge remise en arrière relance simplement le décompte.
+- Vaultic ne lance **jamais** `forget` ni `prune` et ne supprime aucun instantané automatiquement.
+
+**Historique** : `vaultic-history.json` (à côté de `vaultic.json`, donc portable) conserve les 300 dernières exécutions : profil, dépôt (sans identifiants), déclencheur manuel/planifié, statut (réussie, échec, annulée, ignorée), durée, fichiers et octets, identifiant d'instantané et un court résumé d'erreur **assaini** (secrets masqués, une ligne). Aucun mot de passe, jeton ni message de diagnostic brut n'est enregistré. Les écritures sont atomiques.
+
+**Notifications** du bureau : sauvegarde terminée, en échec, ignorée, en retard — chaque catégorie peut être désactivée. Un même événement n'est notifié qu'une fois et le nombre de notifications est limité.
+
+**Limites** : une planification ne protège pas vos fichiers si Vaultic est fermé ou si le mot de passe n'est pas saisi ; la planification s'applique au dépôt actif ; les notifications dépendent de la prise en charge du système ; pas de politique de rétention dans cette version.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
@@ -154,6 +176,7 @@ Chaque dépôt enregistré affiche son nom, son fournisseur, son emplacement (sa
 - Historique et navigation dans les fichiers des instantanés.
 - Restauration sélective d'un fichier ou d'un dossier, destination vide, sans écrasement.
 - Vérification de dépôt, progression et interruption d'opérations.
+- Sauvegardes planifiées pendant que Vaultic est ouvert, historique d'exécution et notifications.
 - Préférences non secrètes, mode portable sur disque externe.
 
 **État : version de développement**, non homologuée pour l'usage de sauvegardes irremplaçables. Les exécutables doivent être testés manuellement sur chaque OS avant publication.

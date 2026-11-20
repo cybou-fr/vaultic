@@ -14,6 +14,7 @@ import (
     "regexp"
     "sort"
     "strings"
+    "sync"
     "sync/atomic"
     "time"
 
@@ -26,7 +27,6 @@ import (
     "fyne.io/fyne/v2/theme"
     "fyne.io/fyne/v2/widget"
 
-    "github.com/restic/restic/internal/data"
     "github.com/restic/restic/internal/global"
     "github.com/restic/restic/internal/repository"
     "github.com/restic/restic/internal/restic"
@@ -217,11 +217,13 @@ func vaulticMain() {
             }
             profiles[i] = vaulticBackupProfile{
                 Name:profile.Name, Sources:storedSources, Excludes:append([]string(nil),profile.Excludes...),
+                Schedule:vaulticCloneSchedule(profile.Schedule),
             }
         }
         return vaulticSaveSettings(vaulticSettings{
             Repository: active, Depots: depots, Sources: profiles[profileIndex].Sources,
             Profiles: profiles, ActiveProfile: profiles[profileIndex].Name,
+            SchedulerPaused: saved.SchedulerPaused, Notifications: saved.Notifications,
         })
     }
     save := func() {
@@ -231,11 +233,25 @@ func vaulticMain() {
     }
 
     var busy atomic.Bool
+    historyStore := newVaulticHistoryStore(vaulticHistoryPath())
+    if err := historyStore.Load(); err != nil { appendLog(err.Error()) }
+    var coord *vaulticCoordinator
+    var automationUI *vaulticAutomationUI
+    var notifyPrefs atomic.Pointer[vaulticNotifyPrefs]
+    {
+        prefs := vaulticDefaultNotifyPrefs()
+        if saved.Notifications != nil { prefs = *saved.Notifications }
+        notifyPrefs.Store(&prefs)
+    }
+    stopScheduler := make(chan struct{})
+    var stopSchedulerOnce sync.Once
     var cancelOp context.CancelFunc
     closing := false
     closePrompt := false
     var stopFocusFollow func()
     closeWindow := func() {
+        stopSchedulerOnce.Do(func(){ close(stopScheduler) })
+        if coord!=nil{ coord.Shutdown(15*time.Second) }
         if stopFocusFollow!=nil{stopFocusFollow()}
         save()
         passEntry.SetText("")
@@ -711,6 +727,7 @@ func vaulticMain() {
     profileSelect := widget.NewSelect(nil, nil)
     exclusionSummary:=widget.NewLabel("Aucune exclusion")
     refreshProfiles := func() {
+        if automationUI != nil { defer automationUI.Load() }
         names := make([]string, len(saved.Profiles))
         for i, profile := range saved.Profiles { names[i] = profile.Name }
         profileSelect.SetOptions(names)
@@ -775,7 +792,13 @@ func vaulticMain() {
                 index = len(next)
                 next = append(next, vaulticBackupProfile{Name: label})
             } else {
+                oldName := next[index].Name
                 next[index].Name = label
+                if applyProfiles(next, index) && oldName != label {
+                    if err := historyStore.RenameProfile(oldName, label); err != nil { appendLog("Historique : "+err.Error()) }
+                    if automationUI != nil { automationUI.Refresh() }
+                }
+                return
             }
             applyProfiles(next, index)
         }, w)
@@ -868,25 +891,109 @@ func vaulticMain() {
                 return nil
             },nil)
     })
+    // Every backup, manual or scheduled, goes through the coordinator: one
+    // engine operation at a time, one history, one set of notifications.
+    launchBackup := func(trigger, profileName string, slot time.Time, catchUp bool) bool {
+        var profile vaulticBackupProfile
+        found := false
+        for _, candidate := range saved.Profiles {
+            if candidate.Name == profileName { profile, found = candidate, true }
+        }
+        manual := trigger == vaulticTriggerManual
+        if !found || len(profile.Sources) == 0 { return false }
+        if activeRepository == "" || passEntry.Text == "" {
+            if manual { dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w) }
+            return false
+        }
+        if !coord.TryAcquire() {
+            if manual { dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", w) }
+            return false
+        }
+        repo, password := activeRepository, passEntry.Text
+        cloudAuth := cloudSessions.get(repo)
+        redact := vaulticRedactCloudSecrets(vaulticRedactOperation(password), cloudAuth)
+        title := "Sauvegarde"
+        if !manual { title = "Sauvegarde planifiée" }
+        cancelOp = coord.Cancel
+        progressPlaceholder.Show()
+        progressSlot.Show()
+        setBusy(true)
+        progress.SetValue(0)
+        status.SetText(title+"…")
+        appendLog("Début : "+title+" — profil « "+profileName+" »")
+        gopts := global.Options{
+            Repo: vaulticResolvedRepository(repo), Password: password, Backends: vaulticBackendsForSession(cloudAuth),
+            JSON:true, Verbosity:1,
+        }
+        exec := vaulticBackupExecutor(gopts, append([]string(nil), profile.Sources...), append([]string(nil), profile.Excludes...),
+            func(report *vaulticBackupReport, line string) { onOutput(context.Background(), title, line, report, redact) })
+        job := vaulticJob{Profile: profileName, Repository: repo, Trigger: trigger, Slot: slot, CatchUp: catchUp, Redact: redact}
+        go func(){
+            record := coord.RunAcquired(job, exec)
+            fyne.Do(func(){
+                cancelOp = nil
+                lastBackupReport = coord.LastReport()
+                status.SetText(title + " · " + vaulticStatusLabel(record.Status))
+                appendLog(title + " · " + lastBackupReport)
+                if record.Status == vaulticStatusSuccess { recentRunValue.SetText(title) }
+                setBusy(false)
+                if closing { closeWindow(); return }
+                if manual { showBackupReport() }
+                if automationUI != nil { automationUI.Refresh() }
+            })
+        }()
+        return true
+    }
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
-        selected := append([]string(nil), sources...)
-        selectedExcludes:=append([]string(nil),saved.Profiles[profileIndex].Excludes...)
-        report := &vaulticBackupReport{started: time.Now(), profile: saved.Profiles[profileIndex].Name}
-        runWithDepot("Sauvegarde", activeRepository, passEntry.Text, false, func(ctx context.Context,g global.Options)error{
-            clean, err := vaulticSourcesForBackup(g.Repo, selected)
-            if err != nil { return err }
-            if err := ctx.Err(); err != nil { return err }
-            host, _ := os.Hostname()
-            opts:= BackupOptions{Host:host,GroupBy:data.SnapshotGroupByOptions{Host:true,Path:true}}
-            opts.Excludes=selectedExcludes
-            err = runBackup(ctx,opts,g,g.Term,clean)
-            // restic can format the underlying context error as plain text.
-            if err != nil && ctx.Err() != nil && !errors.Is(err, ErrInvalidSourceData) {
-                return ctx.Err()
-            }
-            return err
-        }, nil, report)
+        launchBackup(vaulticTriggerManual, saved.Profiles[profileIndex].Name, time.Time{}, false)
     })
+    coord = newVaulticCoordinator(&busy, vaulticCoordinatorEnv{
+        Now: time.Now,
+        Location: func() *time.Location { return time.Local },
+        Profiles: func() []vaulticBackupProfile {
+            out := make([]vaulticBackupProfile, len(saved.Profiles))
+            for i, p := range saved.Profiles {
+                out[i] = p
+                out[i].Schedule = vaulticCloneSchedule(p.Schedule)
+            }
+            return out
+        },
+        Repository: func() string { return activeRepository },
+        HasCredentials: func() bool { return passEntry.Text != "" },
+        Paused: func() bool { return saved.SchedulerPaused },
+        SaveSlot: func(profile string, slot time.Time) error {
+            // May be called from the worker goroutine: settings are only touched on the interface thread.
+            fyne.Do(func(){
+                for i := range saved.Profiles {
+                    if saved.Profiles[i].Name == profile && saved.Profiles[i].Schedule != nil {
+                        saved.Profiles[i].Schedule.LastSlot = slot.Format(time.RFC3339)
+                        if err := persist(saved.Depots, activeRepository); err != nil { appendLog("Erreur d'enregistrement des préférences : "+err.Error()) }
+                    }
+                }
+            })
+            return nil
+        },
+        Start: func(job vaulticJob) bool { return launchBackup(job.Trigger, job.Profile, job.Slot, job.CatchUp) },
+    }, historyStore, newVaulticNotifier(
+        func() vaulticNotifyPrefs { return *notifyPrefs.Load() },
+        func(title, body string) { fyne.Do(func(){ a.SendNotification(&fyne.Notification{Title: title, Content: body}) }) },
+        time.Now,
+    ))
+    coord.OnChange = func() { fyne.Do(func(){ if automationUI != nil { automationUI.Refresh() }; updateActions() }) }
+    go func() {
+        ticker := time.NewTicker(15 * time.Second)
+        defer ticker.Stop()
+        first := time.After(8 * time.Second)
+        for {
+            select {
+            case <-stopScheduler:
+                return
+            case <-first:
+            case <-ticker.C:
+            }
+            fyne.Do(func(){ coord.Tick(); if automationUI != nil { automationUI.Refresh() } })
+        }
+    }()
     backupReportButton := widget.NewButton("Dernier rapport…", showBackupReport)
     backupButton.Importance=widget.HighImportance
     sourceSection:=container.NewBorder(
@@ -1250,21 +1357,69 @@ func vaulticMain() {
         vaulticHeading("Vue d’ensemble",26),
         container.NewHBox(startBackup,setupButton,viewStorage),statGrid,snapshotOverview,
     )))
+    automationUI = newVaulticAutomationUI(vaulticAutomationHooks{
+        Profile: func() vaulticBackupProfile { return saved.Profiles[profileIndex] },
+        SetSchedule: func(schedule vaulticSchedule) error {
+            next := append([]vaulticBackupProfile(nil), saved.Profiles...)
+            old := next[profileIndex].Schedule
+            if schedule.Kind == vaulticScheduleManual {
+                next[profileIndex].Schedule = nil
+            } else {
+                // A new or changed schedule counts from now: enabling it never starts an immediate backup.
+                if old != nil && old.Kind == schedule.Kind && old.Enabled == schedule.Enabled && old.EveryHours == schedule.EveryHours &&
+                    old.Time == schedule.Time && old.MonthDay == schedule.MonthDay && fmt.Sprint(old.Weekdays) == fmt.Sprint(schedule.Weekdays) {
+                    schedule.LastSlot = old.LastSlot
+                } else if schedule.Enabled {
+                    schedule.LastSlot = time.Now().Format(time.RFC3339)
+                }
+                next[profileIndex].Schedule = &schedule
+            }
+            if !applyProfiles(next, profileIndex) { return errors.New("Enregistrement impossible : consultez le message affiché.") }
+            appendLog("Planification du profil « "+next[profileIndex].Name+" » : "+schedule.Describe())
+            return nil
+        },
+        Paused: func() bool { return saved.SchedulerPaused },
+        SetPaused: func(paused bool) {
+            saved.SchedulerPaused = paused
+            if !paused { coord.Resume() } // nothing missed during a pause is made up afterwards
+            if err := persist(saved.Depots, activeRepository); err != nil { appendLog("Erreur d'enregistrement des préférences : "+err.Error()) }
+            appendLog(map[bool]string{true: "Planification mise en pause.", false: "Planification reprise."}[paused])
+        },
+        Notify: func() vaulticNotifyPrefs { return *notifyPrefs.Load() },
+        SetNotify: func(prefs vaulticNotifyPrefs) {
+            notifyPrefs.Store(&prefs)
+            saved.Notifications = &prefs
+            if err := persist(saved.Depots, activeRepository); err != nil { appendLog("Erreur d'enregistrement des préférences : "+err.Error()) }
+        },
+        Coordinator: coord, History: historyStore, Now: time.Now,
+        Credentials: func() bool { return passEntry.Text != "" },
+        Location: func() *time.Location { return time.Local },
+    })
+    automationScroll:=container.NewScroll(container.NewPadded(automationUI.Content))
+    backupTabs:=container.NewAppTabs(
+        container.NewTabItemWithIcon("Lancement",theme.MediaPlayIcon(),container.NewVScroll(container.NewBorder(
+            container.NewPadded(container.NewVBox(
+                container.NewHBox(duplicateProfileButton,deleteProfileButton),
+                container.NewHBox(exclusionsButton,previewExclusionsButton),
+                exclusionSummary,
+            )),
+            container.NewPadded(vaulticSurface(container.NewVBox(
+                vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
+                container.NewGridWithColumns(2, backupButton, backupReportButton),
+            ))),
+            nil,nil,
+            container.NewPadded(vaulticSurface(sourceSection)),
+        ))),
+        container.NewTabItemWithIcon("Automatisation",theme.HistoryIcon(),automationScroll),
+    )
     backupPage:=container.NewBorder(
         container.NewPadded(container.NewVBox(
             vaulticHeading("Sauvegarde", 26),
             widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil,nil,nil,
                 container.NewHBox(newProfileButton,renameProfileButton),profileSelect))),
-            container.NewHBox(duplicateProfileButton,deleteProfileButton),
-            container.NewHBox(exclusionsButton,previewExclusionsButton),
-            exclusionSummary,
         )),
-        container.NewPadded(vaulticSurface(container.NewVBox(
-            vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
-            container.NewGridWithColumns(2, backupButton, backupReportButton),
-        ))),
-        nil,nil,
-        container.NewPadded(vaulticSurface(sourceSection)),
+        nil,nil,nil,
+        backupTabs,
     )
     snapshotPage:=container.NewBorder(
         container.NewPadded(container.NewVBox(
@@ -1321,7 +1476,7 @@ func vaulticMain() {
     )))
 
     pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,storagePage,checkPage,journalPage,repositoriesPage,settingsPage}
-    stopFocusFollow=vaulticKeepFocusVisible(w,[]*container.Scroll{overviewPage,storagePage,checkPage,repositoriesPage,settingsPage})
+    stopFocusFollow=vaulticKeepFocusVisible(w,[]*container.Scroll{overviewPage,storagePage,checkPage,repositoriesPage,settingsPage,automationScroll})
     mainPage:=container.NewStack(overviewPage)
     var navButtons []*widget.Button
     navigate:=func(index int){

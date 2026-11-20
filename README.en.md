@@ -100,6 +100,28 @@ Each saved repository shows its name, provider, location (without credentials), 
 - Swift: Keystone v3 only; Application Credentials by ID. The Keystone URL must be HTTPS (HTTP only to localhost), end with `/v3` and contain no credentials, query or fragment; it is normalized before being kept in memory.
 - Google Cloud: no key entry in Vaultic (ADC only).
 
+## Backup automation
+
+Under **Backup → Automation** (*Automatisation*), every profile has its own schedule: *manual only*, *every N hours*, *daily at a chosen time*, *weekly* (chosen weekdays) or *monthly* (chosen day; 29–31 becomes the last day of a shorter month). Times use the computer's local time zone. Secondary options (weekdays, day of the month, notifications) are under **Advanced options**.
+
+The page shows the frequency, the **next planned run**, the **last successful backup**, current activity, recent history and a **pause / resume scheduling** button.
+
+**How it works**
+
+- The scheduler only works **while Vaultic is running**. There is no Windows service, no system task scheduler entry and no hidden process.
+- A scheduled backup starts only when a repository is active and its **password has been typed** (it is never saved). Otherwise it stays "overdue", which is reported once and never shown as a completed backup; it runs as soon as the password is available.
+- **No backlog**: when several slots were missed (application closed, computer asleep, clock changed) a single catch-up backup runs. Resuming after a pause catches nothing up.
+- **One restic operation at a time**: manual backups, scheduled backups and other operations share one engine. If it is busy, the scheduled backup is deferred by 5 minutes, at most 3 times, then **skipped and recorded** until the next slot. There is no silent retry after a failure.
+- A backup counts as successful only if restic confirms a snapshot ID and reported no unreadable file.
+- Daylight-saving changes, time-zone changes and clock changes are handled: a slot fires once per calendar day, and a clock set back simply restarts the countdown.
+- Vaultic **never** runs `forget` or `prune` and never deletes snapshots automatically.
+
+**History**: `vaultic-history.json` (next to `vaultic.json`, hence portable) keeps the last 300 runs: profile, repository (without credentials), manual/scheduled trigger, status (success, failure, cancelled, skipped), duration, files and bytes, snapshot ID and a short **sanitized** error summary (secrets masked, one line). No password, token or raw diagnostic message is stored. Writes are atomic.
+
+Desktop **notifications**: backup completed, failed, skipped, overdue — each category can be turned off. The same event is notified once and bursts are limited.
+
+**Limitations**: a schedule does not protect your files if Vaultic is closed or the password has not been typed; the schedule applies to the active repository; notifications depend on system support; no retention policy in this version.
+
 ## Manual tests
 
 ```bash

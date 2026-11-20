@@ -27,12 +27,17 @@ type vaulticSettings struct {
 	Depots        []vaulticDepot         `json:"depots,omitempty"`
 	Profiles      []vaulticBackupProfile `json:"backup_profiles,omitempty"`
 	ActiveProfile string                 `json:"active_backup_profile,omitempty"`
+	// Scheduling is paused as a whole (kept across restarts) and notification
+	// categories are chosen by the user. Neither contains credentials.
+	SchedulerPaused bool                `json:"scheduler_paused,omitempty"`
+	Notifications   *vaulticNotifyPrefs `json:"notifications,omitempty"`
 }
 
 type vaulticBackupProfile struct {
-	Name     string   `json:"name"`
-	Sources  []string `json:"sources"`
-	Excludes []string `json:"excludes,omitempty"`
+	Name     string           `json:"name"`
+	Sources  []string         `json:"sources"`
+	Excludes []string         `json:"excludes,omitempty"`
+	Schedule *vaulticSchedule `json:"schedule,omitempty"`
 }
 
 func (s *vaulticSettings) migrateBackupProfiles() int {
