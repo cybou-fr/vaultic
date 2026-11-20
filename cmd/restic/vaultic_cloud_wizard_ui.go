@@ -1,6 +1,8 @@
 package main
 
 import (
+    "strings"
+
     "fyne.io/fyne/v2"
     "fyne.io/fyne/v2/container"
     "fyne.io/fyne/v2/dialog"
@@ -129,6 +131,8 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
     region.SetPlaceHolder("Région S3 (facultatif)")
     mode:=widget.NewSelect([]string{"Clé de compte","Jeton SAS"},nil)
     mode.SetSelected("Clé de compte")
+    project:=widget.NewEntry()
+    project.SetPlaceHolder("ID du projet (facultatif)")
     fields:=[]*widget.FormItem{}
     switch scheme {
     case "s3":
@@ -148,8 +152,15 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
             widget.NewFormItem("Authentification",mode),
             widget.NewFormItem("Clé ou SAS",secret),
         )
+    case "rest":
+        fields=append(fields,
+            widget.NewFormItem("Utilisateur",id),
+            widget.NewFormItem("Mot de passe du serveur",secret),
+        )
+    case "gs":
+        fields=append(fields,widget.NewFormItem("ID du projet Google Cloud",project))
     default:
-        dialog.ShowInformation("Backend","Les identifiants de ce backend sont gérés par sa configuration système.",parent)
+        dialog.ShowInformation("Backend","Les identifiants de ce backend sont gérés par sa configuration système (SSH, rclone, variables OpenStack…).",parent)
         return
     }
     confirm:=widget.NewButton("Utiliser pour cette session",nil)
@@ -168,8 +179,9 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
             AccessID:id.Text,
             Secret:secret.Text,
             Region:region.Text,
-            AccountName:account.Text,
+            AccountName:strings.TrimSpace(account.Text),
             AzureSAS:mode.Selected=="Jeton SAS",
+            ProjectID:strings.TrimSpace(project.Text),
         }
         if err:=auth.validate();err!=nil{dialog.ShowError(err,parent);return}
         if err:=apply(auth);err!=nil{dialog.ShowError(err,parent);return}

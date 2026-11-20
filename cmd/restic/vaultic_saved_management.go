@@ -4,6 +4,7 @@ import (
     "errors"
     "fmt"
     "strings"
+    "time"
     "unicode/utf8"
 )
 
@@ -89,4 +90,60 @@ func vaulticSuggestedCopyName(profiles []vaulticBackupProfile,index int)string{
         if !exists{return candidate}
     }
     return "Copie"
+}
+
+// vaulticRecordVerification stores the outcome of the latest connection test.
+// It touches only Vaultic's own list and never the remote repository.
+func vaulticRecordVerification(depots []vaulticDepot, location string, state vaulticConnState, at time.Time) []vaulticDepot {
+	out := append([]vaulticDepot(nil), depots...)
+	for i := range out {
+		if out[i].Location == location {
+			out[i].LastVerified = at.UTC().Format(time.RFC3339)
+			out[i].LastVerifiedState = state.Key()
+		}
+	}
+	return out
+}
+
+func vaulticVerificationSummary(depot vaulticDepot) string {
+	at, err := time.Parse(time.RFC3339, depot.LastVerified)
+	if err != nil {
+		return "Jamais vérifié"
+	}
+	return vaulticConnStateFromKey(depot.LastVerifiedState).Label() + " · " + at.Local().Format("02/01/2006 15:04")
+}
+
+// vaulticEditSavedDepot renames and/or relocates a saved repository entry.
+// Relocation resets the verification history because it is a different target.
+func vaulticEditSavedDepot(depots []vaulticDepot, oldLocation, name, newLocation string) ([]vaulticDepot, error) {
+	label, err := vaulticValidateSavedName(name)
+	if err != nil {
+		return nil, err
+	}
+	if err := vaulticValidateDepot(newLocation); err != nil {
+		return nil, err
+	}
+	index := -1
+	for i, depot := range depots {
+		if depot.Location == oldLocation {
+			index = i
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(depot.Name), label) {
+			return nil, errors.New("Ce nom de dépôt est déjà utilisé.")
+		}
+		if vaulticResolvedRepository(depot.Location) == vaulticResolvedRepository(newLocation) {
+			return nil, errors.New("Cet emplacement est déjà enregistré.")
+		}
+	}
+	if index < 0 {
+		return nil, errors.New("Le dépôt n'est plus enregistré.")
+	}
+	out := append([]vaulticDepot(nil), depots...)
+	out[index].Name = label
+	if out[index].Location != newLocation {
+		out[index].Location = newLocation
+		out[index].LastVerified, out[index].LastVerifiedState = "", ""
+	}
+	return out, nil
 }

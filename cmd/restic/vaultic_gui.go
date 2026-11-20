@@ -55,7 +55,7 @@ func (t *vaulticTerminal) CanUpdateStatus() bool { return false }
 func (t *vaulticTerminal) InputRaw() io.ReadCloser { return io.NopCloser(strings.NewReader("")) }
 func (t *vaulticTerminal) InputIsTerminal() bool { return false }
 func (t *vaulticTerminal) ReadPassword(ctx context.Context, prompt string) (string, error) {
-    return "", errors.New("Le mot de passe doit être fourni dans l'interface Vaultic")
+    return "", errors.New(vaulticPasswordRequiredMessage)
 }
 func (t *vaulticTerminal) OutputWriter() io.Writer { if t.output != nil { return t.output }; return io.Discard }
 func (t *vaulticTerminal) OutputRaw() io.Writer { return t.OutputWriter() }
@@ -173,34 +173,10 @@ func vaulticMain() {
 
     activeRepository := saved.Repository
     cloudSessions:=&vaulticCloudSessions{}
-    repoEntry := widget.NewEntry()
-    repoEntry.SetPlaceHolder("Chemin local ou adresse rest:https://…")
-    backendInfo:=vaulticWrappedLabel("Choisissez un type de stockage pour afficher les prérequis et un exemple d'adresse.")
-    var cloudWizardButton *widget.Button
-    backendSelect:=widget.NewSelect(vaulticBackendLabels(),func(label string){
-        backend,ok:=vaulticBackendByLabel(label)
-        if !ok{return}
-        backendInfo.SetText(vaulticBackendDescription(backend))
-        repoEntry.SetPlaceHolder(backend.Example)
-        if cloudWizardButton!=nil{
-            switch backend.Scheme{
-            case "s3","b2","azure":
-                cloudWizardButton.Enable()
-            default:
-                cloudWizardButton.Disable()
-            }
-        }
-    })
-    backendSelect.SetSelected(vaulticBackendCatalog[0].Label)
-    repoEntry.OnChanged=func(value string){
-        if strings.TrimSpace(value)==""{return}
-        info,ok:=vaulticBackendForAddress(value)
-        if ok && backendSelect.Selected!=info.Label{backendSelect.SetSelected(info.Label)}
-    }
-    depotName := widget.NewEntry()
-    depotName.SetPlaceHolder("Ex. : Disque externe")
-    depotSelect := widget.NewSelect(nil, nil)
-    depotSelect.PlaceHolder = "Aucun dépôt connecté"
+    var setupUI *vaulticStorageSetupUI
+    var allowNoPassword, inlineResult bool // consumed by the next runWithDepot call
+    repoListBox:=container.NewVBox()
+    var repoRowButtons []*widget.Button
     repoValue:=widget.NewLabel("Aucun dépôt configuré")
     repoValue.Wrapping=fyne.TextWrapWord
     updateRepositoryLabel := func(value string){
@@ -209,8 +185,6 @@ func vaulticMain() {
     updateRepositoryLabel(activeRepository)
     passEntry := widget.NewPasswordEntry()
     passEntry.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré")
-    newPassword := widget.NewPasswordEntry()
-    newPassword.SetPlaceHolder("Mot de passe du dépôt")
 
     status := widget.NewLabel("Prêt")
     status.Wrapping = fyne.TextWrapWord
@@ -263,7 +237,8 @@ func vaulticMain() {
     closeWindow := func() {
         save()
         passEntry.SetText("")
-        newPassword.SetText("")
+        if setupUI!=nil{setupUI.pass.SetText("")}
+        cloudSessions.clearAll()
         w.SetCloseIntercept(nil)
         w.Close()
     }
@@ -286,23 +261,15 @@ func vaulticMain() {
         if on {
             cancelButton.Enable()
             cancelButton.Show()
-            repoEntry.Disable()
-            backendSelect.Disable()
-            depotName.Disable()
-            depotSelect.Disable()
             passEntry.Disable()
-            newPassword.Disable()
         } else {
             cancelButton.Hide()
             progress.Hide()
             progressPlaceholder.Hide()
             progressSlot.Hide()
-            repoEntry.Enable()
-            backendSelect.Enable()
-            depotName.Enable()
             passEntry.Enable()
-            newPassword.Enable()
         }
+        if setupUI!=nil{setupUI.SetBusy(on)}
         for _, b := range actionButtons { if on { b.Disable() } else { b.Enable() } }
         updateActions()
         windowContent.Refresh()
@@ -361,7 +328,9 @@ func vaulticMain() {
     }
 
     runWithDepot := func(title, repo, password string, create bool, fn func(context.Context, global.Options) error, finish func() error, report *vaulticBackupReport) {
-        if repo == "" || password == "" {
+        noPassword, inline := allowNoPassword, inlineResult
+        allowNoPassword, inlineResult = false, false
+        if repo == "" || (password == "" && !noPassword) {
             dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
             return
         }
@@ -388,7 +357,7 @@ func vaulticMain() {
                 Term:terminal, JSON:true, Verbosity:1,
             }
             var err error
-            if !create && vaulticLocalRepository(repo) {
+            if !create && !inline && vaulticLocalRepository(repo) {
                 if _, statErr := os.Stat(gopts.Repo); statErr != nil {
                     err = fmt.Errorf("dépôt inaccessible. Vérifiez le chemin et le branchement du disque : %w", statErr)
                 }
@@ -432,7 +401,11 @@ func vaulticMain() {
                     status.SetText("Erreur : "+title)
                     message := redact(err.Error())
                     appendLog(message)
-                    dialog.ShowError(errors.New(message),w)
+                    if inline {
+                        status.SetText(message)
+                    } else {
+                        dialog.ShowError(errors.New(message),w)
+                    }
                     return
                 }
                 status.SetText(title+" — terminé")
@@ -445,86 +418,174 @@ func vaulticMain() {
         runWithDepot(title, activeRepository, passEntry.Text, false, fn, nil, nil)
     }
 
-    browseRepo := widget.NewButton("Parcourir…", func(){
-        dialog.NewFolderOpen(func(uri fyne.ListableURI, err error){
-            if err != nil { dialog.ShowError(err,w); return }
-            if uri != nil { repoEntry.SetText(uri.Path()) }
-        },w).Show()
-    })
     var activateDepot func(string, string)
     var refreshDepots func()
-    connectDepot := func(create bool) {
-        name, address := strings.TrimSpace(depotName.Text), strings.TrimSpace(repoEntry.Text)
-        if name == "" || newPassword.Text == "" {
-            dialog.ShowInformation("Informations manquantes", "Indiquez le nom et le mot de passe du dépôt.", w)
-            return
+    var editingLocation string
+    savedDepot := func(location string) (vaulticDepot, bool) {
+        for _, depot := range saved.Depots {
+            if depot.Location == location || vaulticResolvedRepository(depot.Location) == vaulticResolvedRepository(location) {
+                return depot, true
+            }
         }
-        if err := vaulticValidateDepot(address); err != nil {
-            dialog.ShowError(err, w)
-            return
-        }
+        return vaulticDepot{}, false
+    }
+    normalizeAddress := func(address string) string {
         if vaulticLocalRepository(address) {
             localPath := strings.TrimPrefix(address, "local:")
             if filepath.IsAbs(localPath) {
-                address = vaulticPortablePath(localPath)
-            } else {
-                address = filepath.Clean(localPath)
+                return vaulticPortablePath(localPath)
             }
+            return filepath.Clean(localPath)
+        }
+        return address
+    }
+    authHasValues := func(a vaulticCloudAuth) bool {
+        return a.Scheme != "" && (a.hasSecret() || a.ProjectID != "" || a.Region != "" || a.AccountName != "")
+    }
+    // recordProbe stores the outcome of a connection test (UI thread only).
+    recordProbe := func(location string, res vaulticProbeResult) {
+        depot, ok := savedDepot(location)
+        if !ok || res.State == vaulticConnNotTested {
+            return
+        }
+        next := vaulticRecordVerification(saved.Depots, depot.Location, res.State, time.Now())
+        if err := persist(next, activeRepository); err != nil {
+            appendLog("Erreur d'enregistrement des préférences : "+err.Error())
+            return
+        }
+        saved.Depots = next
+        refreshDepots()
+    }
+    // probe runs on the worker goroutine; the detail text is redacted because
+    // it may quote engine errors.
+    probe := func(ctx context.Context, g global.Options, location string) vaulticProbeResult {
+        res := vaulticProbeRepository(ctx, g, vaulticProbeTimeout, vaulticVerifyDepot)
+        res.Detail = vaulticRedactCloudSecrets(vaulticRedactOperation(g.Password), cloudSessions.get(location))(res.Detail)
+        return res
+    }
+    // testRepository checks a repository without changing it. Without a
+    // password it can only prove reachability, never a successful connection.
+    testRepository := func(location, password string, fromForm bool) {
+        if busy.Load() { return }
+        if fromForm { setupUI.SetState(vaulticProbeResult{State: vaulticConnTesting}) }
+        allowNoPassword, inlineResult = true, true
+        runWithDepot("Test de la connexion", location, password, false, func(ctx context.Context, g global.Options) error {
+            res := probe(ctx, g, location)
+            if _, known := savedDepot(location); !known { cloudSessions.forget(location) }
+            fyne.Do(func(){
+                if fromForm { setupUI.SetState(res) }
+                recordProbe(location, res)
+            })
+            switch res.State {
+            case vaulticConnConnected, vaulticConnReachable:
+                return nil
+            case vaulticConnNotTested:
+                return context.Canceled
+            }
+            return errors.New(res.State.Label()+" — "+res.Detail)
+        }, nil, nil)
+    }
+    connectDepot := func(setup vaulticStorageSetup, create bool) {
+        name, address := setup.Name, normalizeAddress(setup.Address)
+        if _, exists := savedDepot(address); exists {
+            dialog.ShowInformation("Dépôt déjà enregistré", "Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré.", w)
+            return
         }
         for _, depot := range saved.Depots {
-            if depot.Name == name || vaulticResolvedRepository(depot.Location) == vaulticResolvedRepository(address) {
+            if strings.EqualFold(depot.Name, name) {
                 dialog.ShowInformation("Dépôt déjà enregistré", "Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré.", w)
                 return
             }
         }
-        password := newPassword.Text
+        if authHasValues(setup.Auth) {
+            if err := cloudSessions.set(address, setup.Auth); err != nil {
+                dialog.ShowError(err, w)
+                return
+            }
+        }
+        password := setup.Password
         title := "Connexion au dépôt"
         if create { title = "Création du dépôt" }
+        setupUI.SetState(vaulticProbeResult{State: vaulticConnTesting})
+        var outcome vaulticProbeResult
+        inlineResult = true
         runWithDepot(title, address, password, create, func(ctx context.Context, g global.Options) error {
+            var err error
             if create {
+                createCtx, stop := context.WithTimeout(ctx, 2*vaulticProbeTimeout)
+                defer stop()
                 printer := ui.NewProgressPrinter(g.JSON, g.Verbosity, g.Term)
-                repo, err := global.CreateRepository(ctx, g, restic.StableRepoVersion, nil, printer)
-                if err != nil { return err }
-                return repo.Close()
+                var repo *repository.Repository
+                repo, err = global.CreateRepository(createCtx, g, restic.StableRepoVersion, nil, printer)
+                if err == nil { err = repo.Close() }
+                if ctx.Err() == nil && createCtx.Err() != nil { err = createCtx.Err() }
+                outcome = vaulticClassifyProbe(err, true)
+                if err == nil { outcome.Detail = "Nouveau dépôt créé et ouvert." }
+            } else {
+                outcome = probe(ctx, g, address)
+                switch outcome.State {
+                case vaulticConnConnected:
+                case vaulticConnNotTested:
+                    err = context.Canceled
+                default:
+                    err = errors.New(outcome.State.Label()+" — "+outcome.Detail)
+                }
             }
-            return vaulticVerifyDepot(ctx, g)
+            if err != nil { cloudSessions.forget(address) }
+            outcome.Detail = vaulticRedactCloudSecrets(vaulticRedactOperation(password), setup.Auth)(outcome.Detail)
+            final := outcome
+            fyne.Do(func(){ setupUI.SetState(final) })
+            return err
         }, func() error {
-            depots := append(append([]vaulticDepot(nil), saved.Depots...), vaulticDepot{Name:name, Location:address})
+            depots := append(append([]vaulticDepot(nil), saved.Depots...), vaulticDepot{
+                Name: name, Location: address,
+                LastVerified: time.Now().UTC().Format(time.RFC3339), LastVerifiedState: vaulticConnConnected.Key(),
+            })
             if err := persist(depots, address); err != nil { return err }
             saved.Depots = depots
             activateDepot(address, password)
             refreshDepots()
-            depotName.SetText("")
-            repoEntry.SetText("")
-            newPassword.SetText("")
+            final := outcome
+            setupUI.Reset()
+            setupUI.SetState(final)
             return nil
         }, nil)
     }
-    initButton := widget.NewButton("Créer un dépôt", func(){ connectDepot(true) })
-    connectButton := widget.NewButton("Ouvrir un dépôt existant", func(){ connectDepot(false) })
-    cloudWizardButton=widget.NewButtonWithIcon("Assistant cloud…",theme.SettingsIcon(),func(){
-        if busy.Load(){return}
-        provider,ok:=vaulticBackendByLabel(backendSelect.Selected)
-        if !ok{return}
-        vaulticShowCloudWizard(w,provider.Scheme,func(setup vaulticCloudSetup,create bool)error{
-            if busy.Load(){return errors.New("Une opération est déjà en cours.")}
-            for _,depot:=range saved.Depots{
-                if depot.Name==setup.Name || vaulticResolvedRepository(depot.Location)==vaulticResolvedRepository(setup.Address){
-                    return errors.New("Ce nom ou emplacement est déjà enregistré dans Vaultic.")
-                }
+    saveEditedDepot := func(setup vaulticStorageSetup) {
+        old, address := editingLocation, normalizeAddress(setup.Address)
+        updated, err := vaulticEditSavedDepot(saved.Depots, old, setup.Name, address)
+        if err != nil { dialog.ShowError(err, w); return }
+        active := activeRepository
+        if active == old { active = address }
+        if err := persist(updated, active); err != nil { dialog.ShowError(err, w); return }
+        saved.Depots = updated
+        if old != address {
+            cloudSessions.forget(old)
+            if authHasValues(setup.Auth) {
+                if err := cloudSessions.set(address, setup.Auth); err != nil { dialog.ShowError(err, w) }
             }
-            if err:=cloudSessions.set(setup.Address,setup.Auth);err!=nil{return err}
-            depotName.SetText(setup.Name)
-            repoEntry.SetText(setup.Address)
-            newPassword.SetText(setup.Password)
-            connectDepot(create)
+            if activeRepository == old { activateDepot(address, "") }
+        }
+        editingLocation = ""
+        setupUI.Reset()
+        refreshDepots()
+        appendLog("Dépôt modifié dans Vaultic : "+setup.Name+" (aucune donnée distante modifiée).")
+    }
+    cloudWizardHook := func(scheme string) {
+        if busy.Load() { return }
+        vaulticShowCloudWizard(w, scheme, func(setup vaulticCloudSetup, create bool) error {
+            if busy.Load() { return errors.New("Une opération est déjà en cours.") }
+            if _, exists := savedDepot(setup.Address); exists {
+                return errors.New("Ce nom ou emplacement est déjà enregistré dans Vaultic.")
+            }
+            connectDepot(vaulticStorageSetup{Name: setup.Name, Address: setup.Address, Password: setup.Password, Auth: setup.Auth}, create)
             return nil
         })
-    })
+    }
     verifyButton := widget.NewButton("Vérifier la connexion", func() {
-        run("Vérification de la connexion", vaulticVerifyDepot)
+        testRepository(activeRepository, passEntry.Text, false)
     })
-    cloudAuthEditorButton:=widget.NewButtonWithIcon("Configurer l'accès cloud du dépôt…",theme.SettingsIcon(),func(){
+    cloudAuthEditorButton:=widget.NewButtonWithIcon("Configurer l'accès du dépôt…",theme.SettingsIcon(),func(){
         if busy.Load() || activeRepository==""{return}
         info,ok:=vaulticBackendForAddress(activeRepository)
         if !ok{return}
@@ -533,58 +594,63 @@ func vaulticMain() {
             if err:=cloudSessions.set(activeRepository,auth);err!=nil{return err}
             updateActions()
             if passEntry.Text!=""{
-                run("Vérification de la connexion cloud",vaulticVerifyDepot)
+                testRepository(activeRepository, passEntry.Text, false)
             }else{
-                dialog.ShowInformation("Mot de passe requis","Clés cloud configurées pour cette session. Saisissez le mot de passe restic du dépôt puis utilisez « Vérifier la connexion ».",w)
+                dialog.ShowInformation("Mot de passe requis","Identifiants configurés pour cette session. Saisissez le mot de passe restic du dépôt puis utilisez « Vérifier la connexion ».",w)
             }
             return nil
         })
     })
-    clearCloudAuthButton:=widget.NewButtonWithIcon("Effacer les clés cloud de la session",theme.DeleteIcon(),func(){
+    clearCloudAuthButton:=widget.NewButtonWithIcon("Effacer les identifiants de la session",theme.DeleteIcon(),func(){
         if activeRepository=="" || busy.Load(){return}
         cloudSessions.forget(activeRepository)
-        dialog.ShowInformation("Identifiants effacés","Les clés cloud en mémoire ont été effacées pour ce dépôt. Les données restic et la configuration système ne sont pas modifiées.",w)
+        updateActions()
+        dialog.ShowInformation("Identifiants effacés","Les identifiants en mémoire ont été effacés pour ce dépôt. Les données restic et la configuration système ne sont pas modifiées.",w)
     })
-    renameDepotButton:=widget.NewButtonWithIcon("Renommer…",theme.DocumentCreateIcon(),func(){
-        if activeRepository==""{return}
-        currentName:=""
-        for _,depot:=range saved.Depots{
-            if depot.Location==activeRepository{currentName=depot.Name;break}
-        }
-        if currentName==""{return}
-        field:=widget.NewEntry()
-        field.SetText(currentName)
-        dialog.NewForm("Renommer le dépôt","Enregistrer","Annuler",[]*widget.FormItem{
-            widget.NewFormItem("Nom affiché",field),
-        },func(ok bool){
-            if !ok || busy.Load(){return}
-            updated,err:=vaulticRenameSavedDepot(saved.Depots,activeRepository,field.Text)
-            if err!=nil{dialog.ShowError(err,w);return}
-            if err:=persist(updated,activeRepository);err!=nil{dialog.ShowError(err,w);return}
-            saved.Depots=updated
+    repositoryHooks := vaulticRepositoryHooks{
+        Connect: func(depot vaulticDepot) {
+            if busy.Load() { return }
+            if depot.Location == activeRepository && passEntry.Text != "" {
+                testRepository(depot.Location, passEntry.Text, false)
+                return
+            }
+            if depot.Location != activeRepository {
+                if err := persist(saved.Depots, depot.Location); err != nil { dialog.ShowError(err, w); return }
+                activateDepot(depot.Location, "")
+            }
             refreshDepots()
-            appendLog("Nom du dépôt modifié (données du dépôt inchangées).")
-        },w).Show()
-        w.Canvas().Focus(field)
-    })
-    forgetDepotButton:=widget.NewButtonWithIcon("Retirer de Vaultic…",theme.DeleteIcon(),func(){
-        if activeRepository==""{return}
-        location:=activeRepository
-        name:=depotSelect.Selected
-        dialog.ShowConfirm("Retirer le dépôt",
-            "Retirer « "+name+" » de la liste Vaultic ?\n\nAucun fichier de sauvegarde ni instantané ne sera supprimé. Vous pourrez reconnecter le dépôt plus tard.",
-            func(ok bool){
-                if !ok || busy.Load() || activeRepository!=location{return}
-                next,active,err:=vaulticForgetSavedDepot(saved.Depots,activeRepository,location)
-                if err!=nil{dialog.ShowError(err,w);return}
-                if err:=persist(next,active);err!=nil{dialog.ShowError(err,w);return}
-                saved.Depots=next
-                cloudSessions.forget(location)
-                activateDepot(active,"")
-                refreshDepots()
-                appendLog("Dépôt retiré de la liste Vaultic : "+name+" (sauvegardes non supprimées).")
-            },w)
-    })
+            status.SetText("Dépôt « "+depot.Name+" » sélectionné — saisissez son mot de passe puis vérifiez la connexion.")
+            w.Canvas().Focus(passEntry)
+        },
+        Edit: func(depot vaulticDepot) {
+            if busy.Load() { return }
+            if err := setupUI.Edit(depot.Name, depot.Location); err != nil { dialog.ShowError(err, w); return }
+            editingLocation = depot.Location
+        },
+        Test: func(depot vaulticDepot) {
+            if busy.Load() { return }
+            password := ""
+            if depot.Location == activeRepository { password = passEntry.Text }
+            testRepository(depot.Location, password, false)
+        },
+        Forget: func(depot vaulticDepot) {
+            location, name := depot.Location, depot.Name
+            dialog.ShowConfirm("Oublier le dépôt",
+                "Retirer « "+name+" » de la liste Vaultic ?\n\nAucun fichier de sauvegarde ni instantané ne sera supprimé, ni localement ni à distance. Vous pourrez reconnecter le dépôt plus tard.",
+                func(ok bool){
+                    if !ok || busy.Load() {return}
+                    next,active,err:=vaulticForgetSavedDepot(saved.Depots,activeRepository,location)
+                    if err!=nil{dialog.ShowError(err,w);return}
+                    if err:=persist(next,active);err!=nil{dialog.ShowError(err,w);return}
+                    saved.Depots=next
+                    cloudSessions.forget(location)
+                    if activeRepository==location { activateDepot(active,"") }
+                    if editingLocation==location { editingLocation=""; setupUI.Reset() }
+                    refreshDepots()
+                    appendLog("Dépôt retiré de la liste Vaultic : "+name+" (sauvegardes non supprimées).")
+                },w)
+        },
+    }
 
     sourcesEmpty := vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
     sourcesList := widget.NewList(
@@ -757,8 +823,9 @@ func vaulticMain() {
         editor.SetPlaceHolder("**/node_modules\n**/.cache\n*.tmp")
         editor.SetText(strings.Join(saved.Profiles[targetProfile].Excludes,"\n"))
         explanation:=vaulticWrappedLabel("Une règle restic par ligne. Les lignes vides ou commençant par # sont ignorées. Des exceptions peuvent commencer par !. Les exclusions ne concernent que ce profil.")
-        content:=container.NewBorder(explanation,nil,nil,nil,container.NewVScroll(editor))
-        content.SetMinSize(fyne.NewSize(500,290))
+        scroll:=container.NewVScroll(editor)
+        scroll.SetMinSize(fyne.NewSize(500,290))
+        content:=container.NewBorder(explanation,nil,nil,nil,scroll)
         dialog.NewCustomConfirm("Exclusions du profil","Enregistrer","Annuler",content,func(ok bool){
             if !ok{return}
             if targetProfile!=profileIndex{
@@ -1042,7 +1109,7 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,cloudWizardButton,verifyButton,cloudAuthEditorButton,clearCloudAuthButton,renameDepotButton,forgetDepotButton,addFolder,addFile,refreshButton,checkButton,storageButton,newProfileButton,renameProfileButton,duplicateProfileButton,deleteProfileButton,exclusionsButton,previewExclusionsButton}
+    actionButtons=[]*widget.Button{verifyButton,cloudAuthEditorButton,clearCloudAuthButton,addFolder,addFile,refreshButton,checkButton,storageButton,newProfileButton,renameProfileButton,duplicateProfileButton,deleteProfileButton,exclusionsButton,previewExclusionsButton}
     updateActions = func() {
         if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
         if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
@@ -1066,18 +1133,11 @@ func vaulticMain() {
         vaulticSetButtonEnabled(snapshotCompareButton, canRestore && len(snapshots)>1)
         vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
         activeBackend,knownBackend:=vaulticBackendForAddress(activeRepository)
-        hasCloudEditor:=knownBackend && (activeBackend.Scheme=="s3" || activeBackend.Scheme=="b2" || activeBackend.Scheme=="azure")
+        hasCloudEditor:=knownBackend && (activeBackend.Scheme=="s3" || activeBackend.Scheme=="b2" || activeBackend.Scheme=="azure" || activeBackend.Scheme=="rest" || activeBackend.Scheme=="gs")
         vaulticSetButtonEnabled(cloudAuthEditorButton, !busy.Load() && hasCloudEditor)
-        vaulticSetButtonEnabled(clearCloudAuthButton, !busy.Load() && activeRepository!="" && cloudSessions.get(activeRepository).Secret!="")
-        vaulticSetButtonEnabled(cloudWizardButton, !busy.Load() && (backendSelect.Selected==vaulticBackendCatalog[3].Label || backendSelect.Selected==vaulticBackendCatalog[4].Label || backendSelect.Selected==vaulticBackendCatalog[5].Label))
-        vaulticSetButtonEnabled(renameDepotButton,!busy.Load() && activeRepository!="")
-        vaulticSetButtonEnabled(forgetDepotButton,!busy.Load() && activeRepository!="")
+        vaulticSetButtonEnabled(clearCloudAuthButton, !busy.Load() && activeRepository!="" && cloudSessions.get(activeRepository).hasSecret())
         if busy.Load() { profileSelect.Disable() } else { profileSelect.Enable() }
-        if busy.Load() || len(saved.Depots) == 0 {
-            depotSelect.Disable()
-        } else {
-            depotSelect.Enable()
-        }
+        for _, b := range repoRowButtons { vaulticSetButtonEnabled(b, !busy.Load()) }
     }
     activateDepot = func(address, password string) {
         activeRepository = address
@@ -1100,61 +1160,71 @@ func vaulticMain() {
         storageUpdated.SetText("Aucune analyse effectuée pour ce dépôt.")
     }
     refreshDepots = func() {
-        names := make([]string, 0, len(saved.Depots))
-        activeName := ""
+        repoRowButtons = nil
+        rows := make([]fyne.CanvasObject, 0, len(saved.Depots))
         for _, depot := range saved.Depots {
-            names = append(names, depot.Name)
-            if depot.Location == activeRepository { activeName = depot.Name }
+            row, buttons := vaulticRepositoryRow(depot, depot.Location == activeRepository, repositoryHooks)
+            rows = append(rows, row)
+            repoRowButtons = append(repoRowButtons, buttons...)
         }
-        depotSelect.SetOptions(names)
-        if activeName == "" {
-            if depotSelect.Selected!=""{depotSelect.ClearSelected()}
-        } else if depotSelect.Selected != activeName {
-            depotSelect.SetSelected(activeName)
+        if len(rows) == 0 {
+            rows = append(rows, vaulticWrappedLabel("Aucun dépôt enregistré. Ajoutez-en un ci-dessous."))
         }
+        repoListBox.Objects = rows
+        repoListBox.Refresh()
         updateActions()
     }
-    depotSelect.OnChanged = func(name string) {
-        for _, depot := range saved.Depots {
-            if depot.Name != name || depot.Location == activeRepository { continue }
-            if err := persist(saved.Depots, depot.Location); err != nil {
-                refreshDepots()
-                dialog.ShowError(err, w)
-                return
+    setupUI = vaulticNewStorageSetupUI(vaulticStorageSetupHooks{
+        Window: w,
+        Browse: func(set func(string)) {
+            dialog.NewFolderOpen(func(uri fyne.ListableURI, err error){
+                if err != nil { dialog.ShowError(err,w); return }
+                if uri != nil { set(uri.Path()) }
+            },w).Show()
+        },
+        Submit: func(setup vaulticStorageSetup, action string) {
+            if busy.Load() { return }
+            switch action {
+            case vaulticActionTest:
+                address := normalizeAddress(setup.Address)
+                if authHasValues(setup.Auth) {
+                    if err := cloudSessions.set(address, setup.Auth); err != nil { dialog.ShowError(err, w); return }
+                }
+                testRepository(address, setup.Password, true)
+            case vaulticActionSave:
+                saveEditedDepot(setup)
+            default:
+                connectDepot(setup, action == vaulticActionCreate)
             }
-            activateDepot(depot.Location, "")
-            return
-        }
-    }
+        },
+        Cancel: func() { if cancelOp != nil { cancelOp(); status.SetText("Annulation…") } },
+        Wizard: cloudWizardHook,
+        CancelEdit: func() { editingLocation = ""; setupUI.Reset() },
+    })
+    setupUI.SetBusy(busy.Load())
 
     // Every page has one purpose. Operations still invoke the original Go
     // restic engine; this shell only changes presentation and navigation.
-    fields:=widget.NewForm(
-        widget.NewFormItem("Nom",depotName),
-        widget.NewFormItem("Type",backendSelect),
-        widget.NewFormItem("Emplacement",container.NewBorder(nil,nil,nil,browseRepo,repoEntry)),
-        widget.NewFormItem("Mot de passe",newPassword),
-    )
-    repositoryConfiguration:=vaulticSurface(container.NewVBox(
-        vaulticHeading("Ajouter un dépôt",20),
-        vaulticWrappedLabel("Choisissez un dossier local ou un disque externe, ou saisissez une adresse de dépôt distant."),
-        fields,
-        backendInfo,
-        cloudWizardButton,
-        vaulticCaption("Assistant disponible pour S3/MinIO, B2 et Azure. Clés conservées uniquement en mémoire durant cette session."),
-        container.NewHBox(initButton,connectButton),
+    savedRepositories:=vaulticSurface(container.NewVBox(
+        vaulticHeading("Dépôts enregistrés",20),
+        repoListBox,
+        vaulticCaption("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance."),
     ))
     activeConfiguration:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dépôt actif",20),
-        depotSelect,
-        vaulticWrappedLabel("Sélectionnez un dépôt enregistré, puis saisissez son mot de passe pour l’utiliser."),
+        repoValue,
+        vaulticWrappedLabel("Saisissez le mot de passe restic du dépôt sélectionné, puis vérifiez la connexion. Sans mot de passe, seul l'accès au dépôt est testé."),
         passEntry,
         verifyButton,
         cloudAuthEditorButton,
         clearCloudAuthButton,
-        container.NewHBox(renameDepotButton,forgetDepotButton),
-        vaulticCaption("Retirer un dépôt de Vaultic ne supprime jamais ses sauvegardes."),
     ))
+    repositoriesPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
+        vaulticHeading("Dépôts",26),
+        savedRepositories,
+        activeConfiguration,
+        setupUI.Content,
+    )))
 
     startBackup:=widget.NewButtonWithIcon("Préparer une sauvegarde",theme.MediaPlayIcon(),nil)
     startBackup.Importance=widget.HighImportance
@@ -1242,8 +1312,6 @@ func vaulticMain() {
     )
     settingsPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
         vaulticHeading("Paramètres",26),
-        repositoryConfiguration,
-        activeConfiguration,
         vaulticSurface(container.NewVBox(
             vaulticHeading("À propos de Vaultic",19),
             vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),
@@ -1252,7 +1320,7 @@ func vaulticMain() {
         )),
     )))
 
-    pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,storagePage,checkPage,journalPage,settingsPage}
+    pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,storagePage,checkPage,journalPage,repositoriesPage,settingsPage}
     mainPage:=container.NewStack(overviewPage)
     var navButtons []*widget.Button
     navigate:=func(index int){
@@ -1264,8 +1332,8 @@ func vaulticMain() {
             b.Refresh()
         }
     }
-    navLabels:=[]string{"Vue d'ensemble","Sauvegarde","Instantanés","Stockage","Intégrité","Activité","Paramètres"}
-    navIcons:=[]fyne.Resource{theme.HomeIcon(),theme.StorageIcon(),theme.HistoryIcon(),theme.StorageIcon(),theme.ConfirmIcon(),theme.ListIcon(),theme.SettingsIcon()}
+    navLabels:=[]string{"Vue d'ensemble","Sauvegarde","Instantanés","Stockage","Intégrité","Activité","Dépôts","Paramètres"}
+    navIcons:=[]fyne.Resource{theme.HomeIcon(),theme.StorageIcon(),theme.HistoryIcon(),theme.StorageIcon(),theme.ConfirmIcon(),theme.ListIcon(),theme.StorageIcon(),theme.SettingsIcon()}
     for i:=range navLabels{
         index:=i
         button:=widget.NewButtonWithIcon(navLabels[i],navIcons[i],func(){navigate(index)})
@@ -1282,7 +1350,7 @@ func vaulticMain() {
     sidebar:=container.NewStack(sidebarBg,container.NewPadded(container.NewBorder(
         container.NewVBox(brand,widget.NewSeparator()), nil,
         nil,nil,
-        container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4),navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5],navButtons[6])),
+        container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4),navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5],navButtons[6],navButtons[7])),
     )))
     statusTitle:=widget.NewLabelWithStyle("ÉTAT",fyne.TextAlignLeading,fyne.TextStyle{Bold:true})
     statusBar:=container.NewVBox(

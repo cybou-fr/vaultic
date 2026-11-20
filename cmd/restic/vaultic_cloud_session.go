@@ -5,6 +5,7 @@ import (
     "errors"
     "fmt"
     "net/http"
+    "net/url"
     "strings"
     "sync"
 
@@ -12,6 +13,8 @@ import (
     "github.com/restic/restic/internal/backend/all"
     "github.com/restic/restic/internal/backend/azure"
     "github.com/restic/restic/internal/backend/b2"
+    "github.com/restic/restic/internal/backend/gs"
+    "github.com/restic/restic/internal/backend/rest"
     "github.com/restic/restic/internal/backend/limiter"
     "github.com/restic/restic/internal/backend/location"
     "github.com/restic/restic/internal/backend/s3"
@@ -28,7 +31,11 @@ type vaulticCloudAuth struct {
     AccountName  string
     Region       string
     AzureSAS     bool
+    ProjectID    string // Google Cloud project (not a secret)
 }
+
+// hasSecret reports whether this entry holds anything that must be wiped.
+func (a vaulticCloudAuth) hasSecret() bool { return a.Secret != "" || a.AccessID != "" }
 
 func (a vaulticCloudAuth) validate() error {
     switch a.Scheme {
@@ -39,6 +46,14 @@ func (a vaulticCloudAuth) validate() error {
     case "azure":
         if a.Secret != "" && a.AccountName == "" {
             return errors.New("Le nom du compte Azure est nécessaire avec une clé ou un SAS.")
+        }
+    case "rest":
+        if (a.AccessID == "") != (a.Secret == "") {
+            return errors.New("Renseignez l'utilisateur et le mot de passe du serveur REST, ou laissez les deux champs vides.")
+        }
+    case "gs":
+        if a.Secret != "" || a.AccessID != "" {
+            return errors.New("Google Cloud utilise les Application Default Credentials ; aucune clé n'est saisie ici.")
         }
     default:
         return errors.New("Ce type de stockage n'utilise pas le formulaire cloud.")
@@ -70,6 +85,12 @@ func (s *vaulticCloudSessions) get(repo string) vaulticCloudAuth {
     s.mu.RLock()
     defer s.mu.RUnlock()
     return s.entries[vaulticResolvedRepository(repo)]
+}
+// clearAll drops every credential held for this process (session end).
+func (s *vaulticCloudSessions) clearAll(){
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    for key:=range s.entries{delete(s.entries,key)}
 }
 func (s *vaulticCloudSessions) forget(repo string){
     s.mu.Lock()
@@ -104,6 +125,22 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{},error) {
             copy.AccountID=f.auth.AccessID
             copy.Key=options.NewSecretString(f.auth.Secret)
         }
+        return &copy,nil
+    case "rest":
+        p,ok:=cfg.(*rest.Config)
+        if !ok||p.URL==nil{return nil,errors.New("Configuration REST invalide")}
+        copy:=*p
+        if f.auth.AccessID!=""{
+            u:=*p.URL
+            u.User=url.UserPassword(f.auth.AccessID,f.auth.Secret)
+            copy.URL=&u
+        }
+        return &copy,nil
+    case "gs":
+        p,ok:=cfg.(*gs.Config)
+        if !ok{return nil,errors.New("Configuration Google Cloud invalide")}
+        copy:=*p
+        if f.auth.ProjectID!=""{copy.ProjectID=f.auth.ProjectID}
         return &copy,nil
     case "azure":
         p,ok:=cfg.(*azure.Config)
@@ -152,7 +189,7 @@ func vaulticBackendsForSession(auth vaulticCloudAuth) *location.Registry {
 }
 
 func vaulticCloudSessionDescription(auth vaulticCloudAuth) string {
-    if auth.Secret!="" {return "Identifiants cloud gardés uniquement en mémoire jusqu'à la fermeture de Vaultic."}
+    if auth.hasSecret() {return "Identifiants cloud gardés uniquement en mémoire jusqu'à la fermeture de Vaultic."}
     return "Authentification provenant de la configuration système ou de l'environnement."
 }
 

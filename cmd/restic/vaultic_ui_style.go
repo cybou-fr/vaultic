@@ -161,3 +161,11 @@ func vaulticShowWindow(window fyne.Window, preferred, minimum fyne.Size) {
     window.Resize(fyne.NewSize(max(minimum.Width, preferred.Width/scale), max(minimum.Height, preferred.Height/scale)))
     window.CenterOnScreen()
 }
+
+// vaulticSurfaceRaised is a lighter, borderless panel used for sub-sections
+// nested inside a surface (for instance the before/after headers).
+func vaulticSurfaceRaised(content fyne.CanvasObject) fyne.CanvasObject {
+    bg:=canvas.NewRectangle(vaulticPanelRaised)
+    bg.CornerRadius=12
+    return container.NewStack(bg,container.NewPadded(content))
+}

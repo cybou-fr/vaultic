@@ -16,6 +16,9 @@ import (
 type vaulticDepot struct {
 	Name     string `json:"name"`
 	Location string `json:"location"`
+	// Non-secret connection history, shown in the repository list.
+	LastVerified      string `json:"last_verified,omitempty"` // RFC 3339, UTC
+	LastVerifiedState string `json:"last_verified_state,omitempty"`
 }
 
 type vaulticSettings struct {
@@ -58,7 +61,10 @@ func vaulticValidateDepot(value string) error {
 		}
 		if strings.Contains(endpoint, "://") {
 			parsed, err := url.Parse(endpoint)
-			if err != nil || parsed.User != nil {
+			if err != nil {
+				return fmt.Errorf("utilisez une adresse sans identifiants intégrés")
+			}
+			if _, hasPassword := parsed.User.Password(); parsed.User != nil && (scheme != "sftp" || hasPassword) {
 				return fmt.Errorf("utilisez une adresse sans identifiants intégrés")
 			}
 			if scheme == "rest" && (parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http")) {

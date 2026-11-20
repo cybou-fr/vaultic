@@ -48,12 +48,8 @@ func vaulticBuildCloudSetup(form vaulticCloudFormData)(vaulticCloudSetup,error){
     if err:=credentials.validate();err!=nil{return result,err}
     switch form.Scheme {
     case "s3":
-        endpoint,err:=vaulticCloudField(form.Endpoint)
+        endpoint,err:=vaulticCloudEndpoint(form.Endpoint)
         if err!=nil{return result,err}
-        endpoint=strings.TrimPrefix(endpoint,"https://")
-        if endpoint=="" || strings.ContainsAny(endpoint,"/ @\\") || strings.Contains(endpoint,"://"){
-            return result,errors.New("Indiquez le nom de l'endpoint S3 (ex. s3.amazonaws.com ou minio.exemple.fr:9000).")
-        }
         result.Address="s3:"+endpoint+"/"+bucket
         if prefix!=""{result.Address+="/"+prefix}
     case "b2":
@@ -68,4 +64,15 @@ func vaulticBuildCloudSetup(form vaulticCloudFormData)(vaulticCloudSetup,error){
     result.Password=form.Password
     result.Auth=credentials
     return result,nil
+}
+
+// vaulticCloudEndpoint validates an S3 endpoint host (optionally host:port).
+func vaulticCloudEndpoint(raw string)(string,error){
+    endpoint,err:=vaulticCloudField(raw)
+    if err!=nil{return "",err}
+    endpoint=strings.TrimPrefix(endpoint,"https://")
+    if endpoint=="" || strings.HasPrefix(endpoint,"-") || strings.ContainsAny(endpoint,"/ @\\") || strings.Contains(endpoint,"://"){
+        return "",errors.New("Indiquez le nom de l'endpoint S3 (ex. s3.amazonaws.com ou minio.exemple.fr:9000).")
+    }
+    return endpoint,nil
 }
