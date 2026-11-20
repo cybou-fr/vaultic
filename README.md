@@ -53,6 +53,7 @@ L'interface de bureau Fyne utilise une palette nuit bleu profond avec un accent 
 - **Vue d'ensemble** : informations du dépôt, nombre de sources, instantanés consultés et activité de la session.
 - **Sauvegarde** : choix des fichiers et dossiers à protéger, lancement manuel.
 - **Instantanés** : historique, explorateur et restauration complète ou sélective.
+- **Stockage** : analyse manuelle des données référencées par les instantanés.
 - **Intégrité** : vérification du dépôt sans suppression.
 - **Activité** : journal de la session et messages restic.
 - **Paramètres** : chemin du dépôt, mot de passe en mémoire et initialisation.

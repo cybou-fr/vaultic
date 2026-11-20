@@ -26,7 +26,7 @@ The no-argument executable starts the desktop GUI. Existing restic-style CLI com
 
 ## Vaultic desktop interface
 
-The native Fyne UI now uses a midnight-blue theme, muted aqua accent, vector application icon, rounded panels and six single-purpose sidebar destinations: **Overview, Backup, Snapshots, Integrity, Activity and Settings**. Snapshot file browsing uses the same visual language.
+The native Fyne UI now uses a midnight-blue theme, muted aqua accent, vector application icon, rounded panels and seven single-purpose sidebar destinations: **Overview, Backup, Snapshots, Storage, Integrity, Activity and Settings**. Snapshot file browsing uses the same visual language.
 
 Dashboard figures are derived from current in-app data. When snapshots have not yet been loaded, their count is shown as unknown rather than implying the backups are verified. All restic operations remain in-process.
 
