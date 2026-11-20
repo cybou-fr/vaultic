@@ -86,6 +86,7 @@ type vaulticCoordinator struct {
 	OnChange func()
 	// OnPersistenceError receives errors that should be surfaced in the GUI.
 	OnPersistenceError func(error)
+	persistProblem     string
 }
 
 func newVaulticCoordinator(busy *atomic.Bool, env vaulticCoordinatorEnv, history *vaulticHistoryStore, notifier *vaulticNotifier) *vaulticCoordinator {
@@ -152,9 +153,25 @@ func (c *vaulticCoordinator) changed() {
 }
 
 func (c *vaulticCoordinator) persistenceError(err error) {
-	if err != nil && c.OnPersistenceError != nil {
+	if err == nil {
+		return
+	}
+	c.mu.Lock()
+	c.persistProblem = err.Error()
+	c.mu.Unlock()
+	if c.OnPersistenceError != nil {
 		c.OnPersistenceError(err)
 	}
+	c.changed()
+}
+
+// PersistenceProblem returns the last unresolved failure to save the schedule
+// or the history ("" when everything was saved). It stays until a later run
+// is saved completely, so it cannot be hidden by unrelated status messages.
+func (c *vaulticCoordinator) PersistenceProblem() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.persistProblem
 }
 
 // Execute acquires the gate and runs the job to completion. A scheduled job
@@ -199,6 +216,7 @@ func (c *vaulticCoordinator) RunAcquired(job vaulticJob, exec vaulticExec) (reco
 		err = context.Canceled
 	}
 	ended := c.env.Now()
+	persistFailed := false
 	_, details, resultErr := report.result(err)
 	record = c.buildRecord(job, report, resultErr, started, ended)
 	c.mu.Lock()
@@ -217,15 +235,20 @@ func (c *vaulticCoordinator) RunAcquired(job vaulticJob, exec vaulticExec) (reco
 		}
 		if saveSlot != nil {
 			if e := saveSlot(job.Profile, job.Slot); e != nil {
+				persistFailed = true
 				c.persistenceError(fmt.Errorf("créneau de sauvegarde non enregistré : %w", e))
 			}
 		}
 	}
 	if e := c.history.Append(record); e != nil {
+		persistFailed = true
 		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
 	}
 	c.notifyRecord(record)
 	c.mu.Lock()
+	if !persistFailed {
+		c.persistProblem = ""
+	}
 	if job.Trigger == vaulticTriggerScheduled {
 		st := c.slotState(job.Profile)
 		if job.Slot.After(st.Handled) {

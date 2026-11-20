@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -170,5 +171,26 @@ func TestVaulticValidationMissingCloudCredentialsNeverReportSuccess(t *testing.T
 	last := h.records()[0]
 	if last.Status != vaulticStatusFailure {
 		t.Fatalf("unreachable cloud must fail, got %+v", last)
+	}
+}
+
+// A failed save stays visible in the Automatisation summary and is not hidden
+// by later status text; it clears once a run is saved completely.
+func TestVaulticValidationPersistenceProblemStaysVisibleUntilResolved(t *testing.T) {
+	f := newAutomationFixture(t)
+	f.ui.hooks.Coordinator.persistenceError(errors.New("disque plein"))
+	sum := vaulticSummarize(f.ui.hooks)
+	if !strings.Contains(sum.Warning, "disque plein") {
+		t.Fatalf("persistence failure not visible: %q", sum.Warning)
+	}
+	f.ui.Refresh()
+	if !f.ui.warning.Visible() || !strings.Contains(f.ui.warning.Text, "disque plein") {
+		t.Fatal("warning label does not show the persistence failure")
+	}
+	f.ui.hooks.Coordinator.mu.Lock()
+	f.ui.hooks.Coordinator.persistProblem = ""
+	f.ui.hooks.Coordinator.mu.Unlock()
+	if strings.Contains(vaulticSummarize(f.ui.hooks).Warning, "disque plein") {
+		t.Fatal("resolved problem still shown")
 	}
 }

@@ -396,6 +396,16 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 			out.Warning = "Le dépôt de destination n'est pas actif. Activez-le sur la page Dépôts avant la prochaine sauvegarde."
 		}
 	}
+	if h.Coordinator != nil {
+		if problem := h.Coordinator.PersistenceProblem(); problem != "" {
+			note := "Enregistrement impossible : " + problem + " Libérez de l'espace ou vérifiez les droits du dossier de configuration."
+			if out.Warning != "" {
+				out.Warning += "\n" + note
+			} else {
+				out.Warning = note
+			}
+		}
+	}
 	return out
 }
 
