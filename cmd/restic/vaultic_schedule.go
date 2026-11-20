@@ -28,6 +28,7 @@ const (
 
 // vaulticSchedule is stored in vaultic.json. It contains no credentials.
 type vaulticSchedule struct {
+	Repository string `json:"repository,omitempty"` // pinned destination; no passwords or credentials
 	Kind       string `json:"kind"`
 	Enabled    bool   `json:"enabled"`
 	EveryHours int    `json:"every_hours,omitempty"`
