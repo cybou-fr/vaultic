@@ -156,7 +156,7 @@ La page affiche la fréquence, la **prochaine exécution**, la **dernière sauve
 **Fonctionnement**
 
 - Le planificateur ne travaille que **pendant que Vaultic est ouvert**. Il n'y a ni service Windows, ni tâche du planificateur système, ni processus caché.
-- Une sauvegarde planifiée ne démarre que si un dépôt est actif et que son **mot de passe est saisi** (il n'est jamais enregistré). Sinon elle reste « en retard », ce qui est signalé une seule fois et n'est jamais présenté comme une sauvegarde réalisée ; elle est effectuée dès que le mot de passe est disponible.
+- Chaque planification est liée au dépôt sélectionné au moment de son enregistrement. Changer le dépôt actif ne redirige jamais les sauvegardes planifiées. Le dépôt cible doit être actif et son **mot de passe doit être saisi** (il n'est jamais enregistré) ; sinon la sauvegarde reste en retard jusqu'à l'activation du bon dépôt et la saisie des identifiants.
 - **Pas d'arriéré** : si plusieurs échéances ont été manquées (application fermée, ordinateur en veille, horloge modifiée), une seule sauvegarde de rattrapage est lancée. Reprendre après une pause ne rattrape rien.
 - **Un seul traitement restic à la fois** : les sauvegardes manuelles, planifiées et les autres opérations partagent le même moteur. Si le moteur est occupé, la sauvegarde planifiée est reportée de 5 minutes, 3 fois au plus, puis **ignorée et consignée** jusqu'à l'échéance suivante. Il n'y a aucune nouvelle tentative silencieuse après un échec.
 - Une sauvegarde n'est « réussie » que si restic confirme un identifiant d'instantané et n'a signalé aucun fichier illisible.
@@ -167,7 +167,7 @@ La page affiche la fréquence, la **prochaine exécution**, la **dernière sauve
 
 **Notifications** du bureau : sauvegarde terminée, en échec, ignorée, en retard — chaque catégorie peut être désactivée. Un même événement n'est notifié qu'une fois et le nombre de notifications est limité.
 
-**Limites** : une planification ne protège pas vos fichiers si Vaultic est fermé ou si le mot de passe n'est pas saisi ; la planification s'applique au dépôt actif ; les notifications dépendent de la prise en charge du système ; pas de politique de rétention dans cette version.
+**Limites** : une planification ne protège pas vos fichiers si Vaultic est fermé ou si le mot de passe n'est pas saisi ; chaque planification a un dépôt cible fixe, qui doit être actif au moment de l'exécution ; l'historique et la dernière sauvegarde réussie sont filtrés par dépôt ; les notifications dépendent de la prise en charge du système ; pas de politique de rétention dans cette version.
 
 ## Fonctionnalités en développement
 
