@@ -159,6 +159,7 @@ func vaulticMain() {
     }
     sources := saved.Profiles[profileIndex].Sources
     var snapshots []vaulticSnapshot
+    snapshotMetricsCache:=make(map[string]vaulticSnapshotMetrics)
     selectedSource, selectedSnapshot := -1, -1
     sourceCountValue:=vaulticHeading(fmt.Sprintf("%d",len(sources)),24)
     snapshotCountValue:=vaulticHeading("—",24)
@@ -766,7 +767,11 @@ func vaulticMain() {
         func(id widget.ListItemID,obj fyne.CanvasObject){
             if id>=0 && id<len(snapshots){
                 sn:=snapshots[id]
-                obj.(*widget.Label).SetText(sn.Time.Local().Format("02/01/2006 15:04")+"  ·  "+sn.ShortID+"  ·  "+sn.Hostname)
+                display:=sn.Time.Local().Format("02/01/2006 15:04")+"  ·  "+sn.ShortID+"  ·  "+sn.Hostname
+                if metrics,ok:=snapshotMetricsCache[sn.ID];ok{
+                    display+=fmt.Sprintf("  ·  %d fichiers  ·  %s",metrics.Files,vaulticBytes(metrics.LogicalFileBytes))
+                }
+                obj.(*widget.Label).SetText(display)
             }
         },
     )
@@ -780,7 +785,9 @@ func vaulticMain() {
         if id>=0 && id<len(snapshots){
             selectedSnapshot=id
             sn:=snapshots[id]
-            snapshotDetails.SetText(fmt.Sprintf("Instantané : %s\nMachine : %s\nSources :\n%s",sn.ID,sn.Hostname,strings.Join(sn.Paths,"\n")))
+            detail:=fmt.Sprintf("Instantané : %s\nDate : %s\nMachine : %s\nSources :\n%s",sn.ID,sn.Time.Local().Format("02/01/2006 à 15:04"),sn.Hostname,strings.Join(sn.Paths,"\n"))
+            if metrics,ok:=snapshotMetricsCache[sn.ID];ok{detail+="\n\n"+vaulticFormatSnapshotMetrics(metrics)}
+            snapshotDetails.SetText(detail)
         }
         updateActions()
     }
@@ -835,6 +842,78 @@ func vaulticMain() {
             }
             run(title, operation)
         })
+    })
+    snapshotDetailsButton:=widget.NewButtonWithIcon("Taille et fichiers…",theme.InfoIcon(),func(){
+        if selectedSnapshot<0 || selectedSnapshot>=len(snapshots){return}
+        sn:=snapshots[selectedSnapshot]
+        if cached,ok:=snapshotMetricsCache[sn.ID];ok{
+            dialog.ShowInformation("Détails de l'instantané",vaulticFormatSnapshotMetrics(cached),w)
+            return
+        }
+        var metrics vaulticSnapshotMetrics
+        runWithDepot("Analyse de l'instantané",activeRepository,passEntry.Text,false,
+            func(ctx context.Context,g global.Options)error{
+                var err error
+                metrics,err=vaulticMeasureSnapshot(ctx,g,sn.ID)
+                return err
+            },func()error{
+                snapshotMetricsCache[sn.ID]=metrics
+                snapshotList.Refresh()
+                if selectedSnapshot>=0 && selectedSnapshot<len(snapshots) && snapshots[selectedSnapshot].ID==sn.ID{
+                    details:=fmt.Sprintf("Instantané : %s\nDate : %s\nMachine : %s\nSources :\n%s",sn.ID,sn.Time.Local().Format("02/01/2006 à 15:04"),sn.Hostname,strings.Join(sn.Paths,"\n"))
+                    snapshotDetails.SetText(details+"\n\n"+vaulticFormatSnapshotMetrics(metrics))
+                }
+                dialog.ShowInformation("Détails de l'instantané",vaulticFormatSnapshotMetrics(metrics),w)
+                return nil
+            },nil)
+    })
+    snapshotCompareButton:=widget.NewButtonWithIcon("Comparer…",theme.SearchIcon(),func(){
+        if selectedSnapshot<0 || selectedSnapshot>=len(snapshots) || len(snapshots)<2{return}
+        target:=snapshots[selectedSnapshot]
+        options:=make([]string,0,len(snapshots)-1)
+        ids:=make(map[string]string,len(snapshots)-1)
+        initial:=""
+        suggestedID:=vaulticSuggestedComparisonBase(snapshots,target)
+        for _,sn:=range snapshots{
+            if sn.ID==target.ID{continue}
+            label:=sn.Time.Local().Format("02/01/2006 15:04:05")+"  ·  "+sn.ShortID+"  ·  "+sn.Hostname+"  ·  "+sn.ID
+            options=append(options,label)
+            ids[label]=sn.ID
+            if sn.ID==suggestedID{initial=label}
+        }
+        if initial==""{initial=options[0]}
+        compareSelect:=widget.NewSelect(options,nil)
+        compareSelect.SetSelected(initial)
+        helper:=vaulticWrappedLabel("Sélectionnez l'instantané de référence (avant). Les différences seront calculées vers l'instantané actuellement sélectionné (après).")
+        content:=container.NewVBox(
+            helper,
+            widget.NewLabel("Instantané sélectionné : "+target.Time.Local().Format("02/01/2006 15:04")+"  ·  "+target.ShortID),
+            widget.NewLabel("Instantané de référence :"),
+            compareSelect,
+        )
+        dialog.NewCustomConfirm("Comparer deux instantanés","Comparer","Annuler",content,func(ok bool){
+            if !ok{return}
+            sourceID:=ids[compareSelect.Selected]
+            if sourceID=="" || sourceID==target.ID{return}
+            var comparison vaulticSnapshotComparison
+            runWithDepot("Comparaison des instantanés",activeRepository,passEntry.Text,false,
+                func(ctx context.Context,g global.Options)error{
+                    var err error
+                    comparison,err=vaulticCompareSnapshots(ctx,g,sourceID,target.ID)
+                    return err
+                },func()error{
+                    results:=widget.NewMultiLineEntry()
+                    results.Wrapping=fyne.TextWrapWord
+                    results.SetText(vaulticFormatComparison(comparison))
+                    results.Disable()
+                    content:=container.NewVScroll(results)
+                    content.SetMinSize(fyne.NewSize(570,360))
+                    resultsDialog:=dialog.NewCustom("Différences entre instantanés","Fermer",content,w)
+                    resultsDialog.Resize(fyne.NewSize(720,540))
+                    resultsDialog.Show()
+                    return nil
+                },nil)
+        },w).Show()
     })
     restoreButton:=widget.NewButton("Restaurer le tout…",func(){
         if selectedSnapshot<0 || selectedSnapshot>=len(snapshots){
@@ -903,6 +982,8 @@ func vaulticMain() {
         canRestore := !busy.Load() && selectedSnapshot >= 0
         vaulticSetButtonEnabled(explorerButton, canRestore)
         vaulticSetButtonEnabled(restoreButton, canRestore)
+        vaulticSetButtonEnabled(snapshotDetailsButton, canRestore)
+        vaulticSetButtonEnabled(snapshotCompareButton, canRestore && len(snapshots)>1)
         vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
         vaulticSetButtonEnabled(renameDepotButton,!busy.Load() && activeRepository!="")
         vaulticSetButtonEnabled(forgetDepotButton,!busy.Load() && activeRepository!="")
@@ -924,6 +1005,7 @@ func vaulticMain() {
         snapshotCountValue.Text = "—"
         snapshotCountValue.Refresh()
         recentSnapshotValue.SetText("Aucun instantané consulté")
+        snapshotMetricsCache=make(map[string]vaulticSnapshotMetrics)
         storageVolume.Text="—"
         storageVolume.Refresh()
         storageBlobs.Text="—"
@@ -1030,7 +1112,8 @@ func vaulticMain() {
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(
             snapshotDetailsScroll,
-            container.NewHBox(explorerButton,restoreButton),
+            container.NewGridWithColumns(2,snapshotDetailsButton,snapshotCompareButton),
+            container.NewGridWithColumns(2,explorerButton,restoreButton),
         ))),
         nil,nil,
         container.NewPadded(vaulticSurface(container.NewStack(snapshotList,snapshotEmpty))),

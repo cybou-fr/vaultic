@@ -44,6 +44,12 @@ The **Storage** page runs restic's in-process `stats` in `raw-data` mode on dema
 
 **Preview exclusions…** scans local source paths read-only using restic's exclude pattern matching, with a cap of 25,000 visited entries and up to 80 example paths. The preview is explicitly indicative: an excluded directory represents one matched entry even when it contains many files, and `!` rules or concurrent filesystem changes can affect the real backup. It does **not** create a snapshot.
 
+## Snapshot details and comparisons
+
+On the **Snapshots** screen, **Taille et fichiers…** measures regular file count, directory count and the logical total file size by walking the selected snapshot. These values are not physical repository disk usage, and hardlinks are counted under each visible filename. Results are shown in the snapshot list for the current session.
+
+**Comparer…** selects a reference snapshot (before) and compares it with the selected snapshot (after). Vaultic invokes the original restic `diff` function in process, providing added, removed and modified files, directories and referenced blob deltas. The collector retains only the first 180 path changes while processing the complete comparison. Metadata-only differences are not enabled. The operation may be cancelled; no snapshot is modified or deleted.
+
 ## Manual tests
 
 ```bash

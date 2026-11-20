@@ -82,6 +82,15 @@ Dans **Sauvegarde**, les boutons **Dupliquer…** et **Supprimer le profil…** 
 
 Le bouton **Aperçu des exclusions…** parcourt les sources locales en lecture seule pour trouver des chemins correspondant aux motifs restic du profil. Le résultat est limité à **25 000 entrées parcourues** et **80 exemples affichés** ; le nombre de correspondances n'est pas le nombre exact de fichiers exclus, car un répertoire exclu peut contenir de nombreux fichiers. Les règles de ré-inclusion `!`, les autorisations et les changements du système de fichiers peuvent modifier le résultat du backup réel. Cet aperçu ne crée pas de snapshot et ne remplace pas une vérification de restauration.
 
+## Analyse et comparaison des instantanés
+
+Dans **Instantanés**, sélectionnez un instantané puis :
+
+- **Taille et fichiers…** : calcule le nombre de fichiers ordinaires, de dossiers, d'autres entrées et la taille logique totale des fichiers. Les tailles sont calculées en lisant les arborescences du dépôt, et non déduites du dernier journal de sauvegarde. Les liens physiques comptent pour chacun de leurs noms, et il ne s'agit pas de l'occupation physique du dépôt.
+- **Comparer…** : choisissez un instantané de référence (avant) et comparez-le à l'instantané sélectionné (après). Vaultic utilise directement le moteur `diff` de restic, sans processus externe. Le résultat indique les fichiers ajoutés, supprimés et modifiés, les dossiers et les volumes de blobs concernés.
+
+L'analyse des fichiers est **à la demande** ; les valeurs sont ensuite affichées dans la liste des instantanés pour la session courante et sont remises à zéro lors du changement de dépôt. La comparaison peut être annulée. Elle conserve en mémoire uniquement les 180 premières modifications, mais calcule les statistiques de l'ensemble du diff. Les différences de métadonnées seules ne sont pas affichées avec les options actuelles.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
