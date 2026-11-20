@@ -12,6 +12,7 @@ import (
     "os"
     "path/filepath"
     "regexp"
+    "sort"
     "strings"
     "sync/atomic"
     "time"
@@ -635,6 +636,7 @@ func vaulticMain() {
             if err:=runSnapshots(ctx,SnapshotOptions{},g,nil,term);err!=nil{return err}
             var list []vaulticSnapshot
             if err:=json.Unmarshal(out.Bytes(),&list);err!=nil{return fmt.Errorf("Décodage des instantanés : %w",err)}
+            sort.SliceStable(list, func(i, j int) bool { return list[i].Time.After(list[j].Time) })
             fyne.Do(func(){
                 snapshots=list
                 snapshotsLoaded = true
