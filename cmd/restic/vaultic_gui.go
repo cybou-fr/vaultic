@@ -3,7 +3,6 @@ package main
 // Vaultic is built in the official restic source tree. All backup operations
 // call restic's Go functions directly; no restic executable or shell is launched.
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -203,15 +201,10 @@ func vaulticMain() {
 			}
 		}
 	}
-	var snapshots []vaulticSnapshot
-	snapshotMetricsCache := make(map[string]vaulticSnapshotMetrics)
-	selectedSnapshot := -1
+	var snapshots *vaulticSnapshotsController
 	var profiles *vaulticProfilesController
-	snapshotCountValue := vaulticHeading("—", 24)
 	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	recentRunValue.Truncation = fyne.TextTruncateEllipsis
-	recentSnapshotValue := widget.NewLabel("Aucun instantané consulté")
-	recentSnapshotValue.Wrapping = fyne.TextWrapWord
 	storageVolume := vaulticHeading("—", 24)
 	storageBlobs := vaulticHeading("—", 24)
 	storageSnapshots := vaulticHeading("—", 24)
@@ -1015,230 +1008,16 @@ func vaulticMain() {
 	backupReportButton := widget.NewButton("Dernier rapport…", showBackupReport)
 	backupButton.Importance = widget.HighImportance
 
-	snapshotList := widget.NewList(
-		func() int { return len(snapshots) },
-		vaulticTimelineTemplate,
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			if id < 0 || id >= len(snapshots) {
-				return
-			}
-			sn := snapshots[id]
-			var previous *vaulticSnapshot
-			if id > 0 {
-				previous = &snapshots[id-1]
-			}
-			var metrics *vaulticSnapshotMetrics
-			if savedMetrics, ok := snapshotMetricsCache[sn.ID]; ok {
-				metrics = &savedMetrics
-			}
-			vaulticUpdateTimelineRow(obj, sn, previous, metrics)
+	snapshots = newVaulticSnapshotsController(vaulticSnapshotsHooks{
+		Window:           w,
+		App:              a,
+		ActiveRepository: func() string { return activeRepository },
+		UpdateActions:    func() { updateActions() },
+		Run:              func(title string, fn func(context.Context, global.Options) error) { run(title, fn) },
+		RunWithDepot: func(title string, fn func(context.Context, global.Options) error, done func() error) {
+			runWithDepot(title, activeRepository, passEntry.Text, false, fn, done, nil)
 		},
-	)
-	snapshotEmptyLabel := vaulticWrappedLabel("Actualisez l’historique pour afficher les instantanés du dépôt.")
-	snapshotEmpty := vaulticEmptyState(snapshotEmptyLabel)
-	snapshotDetails := vaulticWrappedLabel("Sélectionnez un instantané pour le parcourir ou le restaurer.")
-	snapshotDetailsScroll := container.NewVScroll(snapshotDetails)
-	snapshotDetailsScroll.SetMinSize(fyne.NewSize(0, 64))
-	var snapshotsLoaded bool
-	snapshotList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(snapshots) {
-			selectedSnapshot = id
-			sn := snapshots[id]
-			detail := fmt.Sprintf("Instantané : %s\nDate : %s\nMachine : %s\nSources :\n%s", sn.ID, sn.Time.Local().Format("02/01/2006 à 15:04"), sn.Hostname, strings.Join(sn.Paths, "\n"))
-			if metrics, ok := snapshotMetricsCache[sn.ID]; ok {
-				detail += "\n\n" + vaulticFormatSnapshotMetrics(metrics)
-			}
-			snapshotDetails.SetText(detail)
-		}
-		updateActions()
-	}
-	resetSnapshotSelection := func() {
-		selectedSnapshot = -1
-		snapshotList.UnselectAll()
-		snapshotDetails.SetText("Sélectionnez un instantané pour le parcourir ou le restaurer.")
-		updateActions()
-	}
-	snapshotList.OnUnselected = func(id widget.ListItemID) {
-		if selectedSnapshot == id {
-			selectedSnapshot = -1
-			snapshotDetails.SetText("Sélectionnez un instantané pour le parcourir ou le restaurer.")
-			updateActions()
-		}
-	}
-	refreshButton := widget.NewButton("Actualiser les instantanés", func() {
-		run("Lecture des instantanés", func(ctx context.Context, g global.Options) error {
-			var out bytes.Buffer
-			term := g.Term.(*vaulticTerminal)
-			term.output = &out
-			if err := runSnapshots(ctx, SnapshotOptions{}, g, nil, term); err != nil {
-				return err
-			}
-			var list []vaulticSnapshot
-			if err := json.Unmarshal(out.Bytes(), &list); err != nil {
-				return fmt.Errorf("Décodage des instantanés : %w", err)
-			}
-			sort.SliceStable(list, func(i, j int) bool { return list[i].Time.After(list[j].Time) })
-			fyne.Do(func() {
-				snapshots = list
-				snapshotsLoaded = true
-				resetSnapshotSelection()
-				snapshotList.Refresh()
-				snapshotCountValue.Text = fmt.Sprintf("%d", len(list))
-				snapshotCountValue.Refresh()
-				if len(list) > 0 {
-					latest := list[0].Time
-					for _, candidate := range list[1:] {
-						if candidate.Time.After(latest) {
-							latest = candidate.Time
-						}
-					}
-					recentSnapshotValue.SetText("Dernier instantané : " + latest.Local().Format("02/01/2006 à 15:04"))
-				} else {
-					recentSnapshotValue.SetText("Aucun instantané dans ce dépôt")
-				}
-			})
-			return nil
-		})
 	})
-	explorerButton := widget.NewButton("Parcourir les fichiers…", func() {
-		if selectedSnapshot < 0 || selectedSnapshot >= len(snapshots) {
-			dialog.ShowInformation("Sélection requise", "Sélectionnez un instantané.", w)
-			return
-		}
-		repository := vaulticResolvedRepository(activeRepository)
-		vaulticOpenExplorer(a, snapshots[selectedSnapshot], func(title string, operation func(context.Context, global.Options) error) {
-			if repository != vaulticResolvedRepository(activeRepository) {
-				dialog.ShowInformation("Dépôt modifié", "Actualisez les instantanés du dépôt actif avant de les parcourir.", w)
-				return
-			}
-			run(title, operation)
-		})
-	})
-	snapshotDetailsButton := widget.NewButtonWithIcon("Taille et fichiers…", theme.InfoIcon(), func() {
-		if selectedSnapshot < 0 || selectedSnapshot >= len(snapshots) {
-			return
-		}
-		sn := snapshots[selectedSnapshot]
-		if cached, ok := snapshotMetricsCache[sn.ID]; ok {
-			dialog.ShowInformation("Détails de l'instantané", vaulticFormatSnapshotMetrics(cached), w)
-			return
-		}
-		var metrics vaulticSnapshotMetrics
-		runWithDepot("Analyse de l'instantané", activeRepository, passEntry.Text, false,
-			func(ctx context.Context, g global.Options) error {
-				var err error
-				metrics, err = vaulticMeasureSnapshot(ctx, g, sn.ID)
-				return err
-			}, func() error {
-				snapshotMetricsCache[sn.ID] = metrics
-				snapshotList.Refresh()
-				if selectedSnapshot >= 0 && selectedSnapshot < len(snapshots) && snapshots[selectedSnapshot].ID == sn.ID {
-					details := fmt.Sprintf("Instantané : %s\nDate : %s\nMachine : %s\nSources :\n%s", sn.ID, sn.Time.Local().Format("02/01/2006 à 15:04"), sn.Hostname, strings.Join(sn.Paths, "\n"))
-					snapshotDetails.SetText(details + "\n\n" + vaulticFormatSnapshotMetrics(metrics))
-				}
-				dialog.ShowInformation("Détails de l'instantané", vaulticFormatSnapshotMetrics(metrics), w)
-				return nil
-			}, nil)
-	})
-	snapshotCompareButton := widget.NewButtonWithIcon("Comparer…", theme.SearchIcon(), func() {
-		if selectedSnapshot < 0 || selectedSnapshot >= len(snapshots) || len(snapshots) < 2 {
-			return
-		}
-		target := snapshots[selectedSnapshot]
-		options, ids, initial := vaulticComparisonChoices(snapshots, target)
-		compareSelect := widget.NewSelect(options, nil)
-		compareSelect.SetSelected(initial)
-		helper := vaulticWrappedLabel("Sélectionnez l'instantané de référence (avant). Les différences seront calculées vers l'instantané actuellement sélectionné (après).")
-		content := container.NewVBox(
-			helper,
-			widget.NewLabel("Instantané sélectionné : "+target.Time.Local().Format("02/01/2006 15:04")+"  ·  "+target.ShortID),
-			widget.NewLabel("Instantané de référence :"),
-			compareSelect,
-		)
-		dialog.NewCustomConfirm("Comparer deux instantanés", "Comparer", "Annuler", content, func(ok bool) {
-			if !ok {
-				return
-			}
-			sourceID := ids[compareSelect.Selected]
-			if sourceID == "" || sourceID == target.ID {
-				return
-			}
-			var comparison vaulticSnapshotComparison
-			originalRepo := vaulticResolvedRepository(activeRepository)
-			knownSnapshots := append([]vaulticSnapshot(nil), snapshots...)
-			runWithDepot("Comparaison des instantanés", activeRepository, passEntry.Text, false,
-				func(ctx context.Context, g global.Options) error {
-					var err error
-					comparison, err = vaulticCompareSnapshots(ctx, g, sourceID, target.ID)
-					return err
-				}, func() error {
-					vaulticShowVisualComparison(a, comparison, func(snapshotID, selectedPath string) {
-						if originalRepo != vaulticResolvedRepository(activeRepository) {
-							dialog.ShowInformation("Dépôt modifié", "Revenez au dépôt d'origine avant de restaurer cet élément.", w)
-							return
-						}
-						var sourceSnapshot vaulticSnapshot
-						found := false
-						for _, sn := range knownSnapshots {
-							if sn.ID == snapshotID {
-								sourceSnapshot = sn
-								found = true
-								break
-							}
-						}
-						if !found {
-							dialog.ShowInformation("Instantané introuvable", "Actualisez la liste des instantanés.", w)
-							return
-						}
-						vaulticOpenExplorerAtPath(a, sourceSnapshot, func(title string, operation func(context.Context, global.Options) error) {
-							if originalRepo != vaulticResolvedRepository(activeRepository) {
-								dialog.ShowInformation("Dépôt modifié", "Le dépôt a changé. Fermez cet explorateur puis rechargez l'historique.", w)
-								return
-							}
-							run(title, operation)
-						}, selectedPath)
-					})
-					return nil
-				}, nil)
-		}, w).Show()
-	})
-	restoreButton := widget.NewButton("Restaurer le tout…", func() {
-		if selectedSnapshot < 0 || selectedSnapshot >= len(snapshots) {
-			dialog.ShowInformation("Sélection requise", "Sélectionnez d'abord un instantané.", w)
-			return
-		}
-		id := snapshots[selectedSnapshot].ID
-		if !vaulticSnapshotID.MatchString(id) {
-			dialog.ShowError(errors.New("Identifiant d'instantané non valide"), w)
-			return
-		}
-		dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			if uri == nil {
-				return
-			}
-			dest, err := vaulticRestoreTarget(uri.Path())
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			dialog.ShowConfirm("Confirmer la restauration",
-				"Restaurer l'instantané "+id[:min(len(id), 12)]+" dans :\n"+dest+"\n\nLe dossier doit être vide. Aucun fichier existant ne sera écrasé.",
-				func(ok bool) {
-					if !ok {
-						return
-					}
-					// Recheck immediately before starting the restoration.
-					run("Restauration", func(ctx context.Context, g global.Options) error {
-						return vaulticRestoreSnapshot(ctx, g, id, nil, dest)
-					})
-				}, w)
-		}, w).Show()
-	})
-	restoreButton.Importance = widget.HighImportance
 	checkButton := widget.NewButton("Vérifier l'intégrité", func() {
 		run("Vérification", func(ctx context.Context, g global.Options) error {
 			_, err := runCheck(ctx, CheckOptions{}, g, nil, g.Term)
@@ -1267,23 +1046,14 @@ func vaulticMain() {
 		})
 	})
 
-	actionButtons = []*widget.Button{verifyButton, cloudAuthEditorButton, clearCloudAuthButton, profiles.AddFolder, profiles.AddFile, refreshButton, checkButton, storageButton, profiles.New, profiles.Rename, profiles.Duplicate, profiles.Delete, profiles.Exclusions, profiles.Preview}
+	actionButtons = []*widget.Button{verifyButton, cloudAuthEditorButton, clearCloudAuthButton, profiles.AddFolder, profiles.AddFile, snapshots.Refresh, checkButton, storageButton, profiles.New, profiles.Rename, profiles.Duplicate, profiles.Delete, profiles.Exclusions, profiles.Preview}
 	updateActions = func() {
 		if len(profiles.Sources()) == 0 {
 			profiles.Empty.Show()
 		} else {
 			profiles.Empty.Hide()
 		}
-		if len(snapshots) == 0 {
-			snapshotEmpty.Show()
-		} else {
-			snapshotEmpty.Hide()
-		}
-		if snapshotsLoaded {
-			snapshotEmptyLabel.SetText("Ce dépôt ne contient aucun instantané.")
-		} else {
-			snapshotEmptyLabel.SetText("Actualisez l’historique pour afficher les instantanés du dépôt.")
-		}
+		snapshots.UpdateState(busy.Load())
 		vaulticSetButtonEnabled(backupButton, !busy.Load() && len(profiles.Sources()) > 0)
 		vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
 		vaulticSetButtonEnabled(profiles.Exclusions, !busy.Load())
@@ -1292,11 +1062,6 @@ func vaulticMain() {
 		vaulticSetButtonEnabled(profiles.Delete, !busy.Load() && len(saved.Profiles) > 1)
 		vaulticSetButtonEnabled(storageButton, !busy.Load() && activeRepository != "")
 		vaulticSetButtonEnabled(profiles.RemoveSource, !busy.Load() && profiles.Selected() >= 0)
-		canRestore := !busy.Load() && selectedSnapshot >= 0
-		vaulticSetButtonEnabled(explorerButton, canRestore)
-		vaulticSetButtonEnabled(restoreButton, canRestore)
-		vaulticSetButtonEnabled(snapshotDetailsButton, canRestore)
-		vaulticSetButtonEnabled(snapshotCompareButton, canRestore && len(snapshots) > 1)
 		vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
 		activeBackend, knownBackend := vaulticBackendForAddress(activeRepository)
 		hasCloudEditor := knownBackend && (activeBackend.Scheme == "s3" || activeBackend.Scheme == "b2" || activeBackend.Scheme == "azure" || activeBackend.Scheme == "rest" || activeBackend.Scheme == "gs" || activeBackend.Scheme == "swift")
@@ -1315,14 +1080,7 @@ func vaulticMain() {
 		activeRepository = address
 		passEntry.SetText(password)
 		updateRepositoryLabel(address)
-		snapshots = nil
-		snapshotsLoaded = false
-		resetSnapshotSelection()
-		snapshotList.Refresh()
-		snapshotCountValue.Text = "—"
-		snapshotCountValue.Refresh()
-		recentSnapshotValue.SetText("Aucun instantané consulté")
-		snapshotMetricsCache = make(map[string]vaulticSnapshotMetrics)
+		snapshots.Clear()
 		storageVolume.Text = "—"
 		storageVolume.Refresh()
 		storageBlobs.Text = "—"
@@ -1398,8 +1156,8 @@ func vaulticMain() {
 	viewSnapshots := widget.NewButtonWithIcon("Voir les instantanés", theme.HistoryIcon(), nil)
 	viewStorage := widget.NewButtonWithIcon("Espace de stockage", theme.StorageIcon(), nil)
 	overviewPage := vaulticOverviewPage(vaulticOverviewParts{
-		SourceCount: profiles.CountValue, SnapshotCount: snapshotCountValue, Repository: repoValue,
-		RecentRun: recentRunValue, RecentSnapshot: recentSnapshotValue,
+		SourceCount: profiles.CountValue, SnapshotCount: snapshots.CountValue, Repository: repoValue,
+		RecentRun: recentRunValue, RecentSnapshot: snapshots.RecentValue,
 		StartBackup: startBackup, Setup: setupButton, ViewSnapshots: viewSnapshots, ViewStorage: viewStorage,
 	})
 	repositoriesPage := vaulticRepositoriesPage(vaulticRepositoriesParts{
@@ -1451,10 +1209,10 @@ func vaulticMain() {
 		Sources: profiles.Section, BackupNow: backupButton, LastReport: backupReportButton,
 	}, automationUI.Content)
 	snapshotPage := vaulticSnapshotPage(vaulticSnapshotParts{
-		Refresh: refreshButton, Details: snapshotDetailsScroll,
-		DetailsButton: snapshotDetailsButton, Compare: snapshotCompareButton,
-		Explorer: explorerButton, Restore: restoreButton,
-		List: snapshotList, Empty: snapshotEmpty,
+		Refresh: snapshots.Refresh, Details: snapshots.DetailsScroll,
+		DetailsButton: snapshots.DetailsButton, Compare: snapshots.Compare,
+		Explorer: snapshots.Explorer, Restore: snapshots.Restore,
+		List: snapshots.list, Empty: snapshots.Empty,
 	})
 	storagePage := vaulticStoragePage(vaulticStorageParts{
 		Analyze: storageButton, Updated: storageUpdated,
