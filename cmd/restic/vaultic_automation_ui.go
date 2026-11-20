@@ -51,6 +51,7 @@ type vaulticAutomationHooks struct {
 	History     *vaulticHistoryStore
 	Now         func() time.Time
 	Credentials func() bool
+	ActiveRepository func() string
 	Location    func() *time.Location
 }
 
@@ -75,7 +76,7 @@ type vaulticAutomationUI struct {
 	pauseButton *widget.Button
 	message     *widget.Label
 
-	scheduleValue, nextValue, lastValue, activityValue *widget.Label
+	scheduleValue, nextValue, lastValue, activityValue, targetValue *widget.Label
 	warning                                            *widget.Label
 	historyBox                                         *fyne.Container
 	loading                                            bool
@@ -136,6 +137,7 @@ func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 
 	u.scheduleValue, u.nextValue = widget.NewLabel(""), vaulticWrappedLabel("")
 	u.lastValue, u.activityValue = vaulticWrappedLabel(""), vaulticWrappedLabel("")
+	u.targetValue = vaulticWrappedLabel("")
 	u.scheduleValue.Truncation = fyne.TextTruncateEllipsis
 	u.warning = vaulticWrappedLabel("")
 	u.warning.Importance = widget.WarningImportance
@@ -143,6 +145,7 @@ func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 
 	status := container.NewVBox(
 		vaulticStatusLine("Fréquence", u.scheduleValue),
+		vaulticStatusLine("Dépôt de destination", u.targetValue),
 		vaulticStatusLine("Prochaine exécution", u.nextValue),
 		vaulticStatusLine("Dernière sauvegarde réussie", u.lastValue),
 		vaulticStatusLine("Activité", u.activityValue),
@@ -159,7 +162,7 @@ func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 	u.Content = container.NewVBox(
 		vaulticSurface(container.NewVBox(vaulticHeading("Automatisation", 20), status)),
 		vaulticSurface(container.NewVBox(vaulticHeading("Planification", 18), form,
-			vaulticWrappedLabel("La planification ne fonctionne que pendant que Vaultic est ouvert et que le mot de passe du dépôt est saisi. Elle ne supprime jamais d'instantané et n'est pas une garantie de protection."))),
+			vaulticWrappedLabel("Le dépôt actif est fixé à cette planification lors de l'enregistrement. Pour choisir un autre dépôt, activez-le dans Dépôts, puis enregistrez la planification. Vaultic doit rester ouvert et le mot de passe du dépôt doit être saisi. Aucun instantané n'est supprimé automatiquement."))),
 		vaulticSurface(container.NewVBox(vaulticHeading("Historique récent", 18), u.historyBox)),
 	)
 	u.Load()
@@ -325,7 +328,7 @@ func vaulticFormatDuration(d time.Duration) string {
 // vaulticAutomationSummary computes the status texts (separate from widgets so
 // that they can be tested).
 type vaulticAutomationSummary struct {
-	Schedule, Next, LastSuccess, Activity, Warning string
+	Schedule, Next, LastSuccess, Activity, Warning, Target, Repository string
 	Paused                                         bool
 }
 
@@ -334,6 +337,12 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 	profile := h.Profile()
 	var out vaulticAutomationSummary
 	out.Paused = h.Paused()
+	activeRepo := ""
+	if h.ActiveRepository != nil { activeRepo = h.ActiveRepository() }
+	repo := activeRepo
+	if profile.Schedule != nil && profile.Schedule.Repository != "" { repo = profile.Schedule.Repository }
+	out.Repository = repo
+	if repo != "" { out.Target = vaulticSafeLocation(repo) } else { out.Target = "Aucun dépôt sélectionné" }
 	switch {
 	case profile.Schedule == nil || profile.Schedule.Kind == "" || profile.Schedule.Kind == vaulticScheduleManual:
 		out.Schedule, out.Next = "Manuel uniquement", "Aucune — lancez la sauvegarde vous-même."
@@ -358,7 +367,7 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 			out.Schedule += " — en pause"
 		}
 	}
-	if last, ok := h.History.LastSuccess(profile.Name); ok {
+	if last, ok := h.History.LastSuccessForRepository(profile.Name, repo); ok {
 		out.LastSuccess = vaulticFormatMoment(last.Ended, loc) + " · instantané " + shortID(last.SnapshotID)
 	} else {
 		out.LastSuccess = "Aucune sauvegarde réussie enregistrée."
@@ -369,8 +378,14 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 			out.Activity = fmt.Sprintf("Sauvegarde %s en cours depuis %s (profil « %s »).",
 				strings.ToLower(vaulticTriggerLabel(run.Job.Trigger)), vaulticFormatDuration(now.Sub(run.Started)), run.Job.Profile)
 		}
-		if h.Coordinator.Overdue(profile.Name) && !h.Credentials() {
-			out.Warning = "Une sauvegarde planifiée est en retard : saisissez le mot de passe du dépôt (page Dépôts). Elle ne sera pas considérée comme réalisée."
+		if h.Coordinator.Overdue(profile.Name) {
+			if repo != activeRepo {
+				out.Warning = "Une sauvegarde planifiée est en retard : activez le dépôt de destination sur la page Dépôts. Elle ne sera pas considérée comme réalisée."
+			} else if !h.Credentials() {
+				out.Warning = "Une sauvegarde planifiée est en retard : saisissez le mot de passe du dépôt (page Dépôts). Elle ne sera pas considérée comme réalisée."
+			}
+		} else if profile.Schedule != nil && profile.Schedule.Active() && repo != activeRepo {
+			out.Warning = "Le dépôt de destination n'est pas actif. Activez-le sur la page Dépôts avant la prochaine sauvegarde."
 		}
 	}
 	return out
@@ -424,6 +439,7 @@ func vaulticHistoryRow(r vaulticRunRecord, loc *time.Location) fyne.CanvasObject
 func (u *vaulticAutomationUI) Refresh() {
 	sum := vaulticSummarize(u.hooks)
 	u.scheduleValue.SetText(sum.Schedule)
+	u.targetValue.SetText(sum.Target)
 	u.nextValue.SetText(sum.Next)
 	u.lastValue.SetText(sum.LastSuccess)
 	u.activityValue.SetText(sum.Activity)
@@ -440,7 +456,7 @@ func (u *vaulticAutomationUI) Refresh() {
 		u.pauseButton.SetText("Mettre en pause")
 		u.pauseButton.SetIcon(theme.MediaPauseIcon())
 	}
-	records := u.hooks.History.Recent(u.hooks.Profile().Name, 8)
+	records := u.hooks.History.RecentForRepository(u.hooks.Profile().Name, sum.Repository, 8)
 	rows := make([]fyne.CanvasObject, 0, len(records))
 	loc := u.hooks.Location()
 	for _, r := range records {
