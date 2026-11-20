@@ -440,7 +440,7 @@ func vaulticMain() {
         return address
     }
     authHasValues := func(a vaulticCloudAuth) bool {
-        return a.Scheme != "" && (a.hasSecret() || a.ProjectID != "" || a.Region != "" || a.AccountName != "")
+        return a.hasValues()
     }
     // recordProbe stores the outcome of a connection test (UI thread only).
     recordProbe := func(location string, res vaulticProbeResult) {
@@ -1133,7 +1133,7 @@ func vaulticMain() {
         vaulticSetButtonEnabled(snapshotCompareButton, canRestore && len(snapshots)>1)
         vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
         activeBackend,knownBackend:=vaulticBackendForAddress(activeRepository)
-        hasCloudEditor:=knownBackend && (activeBackend.Scheme=="s3" || activeBackend.Scheme=="b2" || activeBackend.Scheme=="azure" || activeBackend.Scheme=="rest" || activeBackend.Scheme=="gs")
+        hasCloudEditor:=knownBackend && (activeBackend.Scheme=="s3" || activeBackend.Scheme=="b2" || activeBackend.Scheme=="azure" || activeBackend.Scheme=="rest" || activeBackend.Scheme=="gs" || activeBackend.Scheme=="swift")
         vaulticSetButtonEnabled(cloudAuthEditorButton, !busy.Load() && hasCloudEditor)
         vaulticSetButtonEnabled(clearCloudAuthButton, !busy.Load() && activeRepository!="" && cloudSessions.get(activeRepository).hasSecret())
         if busy.Load() { profileSelect.Disable() } else { profileSelect.Enable() }

@@ -64,11 +64,18 @@ const (
 	vaulticProbeTimeout            = 45 * time.Second
 )
 
-var vaulticAuthFailureHints = []string{
-	"access denied", "accessdenied", "403", "401", "unauthorized", "forbidden", "invalidaccesskeyid",
-	"signaturedoesnotmatch", "authentication failed", "authorizationfailure", "permission denied (publickey",
-	"invalid credentials", "bad credentials", "unable to authenticate", "no valid credential",
-}
+var (
+	vaulticDeniedHints      = []string{"403", "forbidden", "access denied", "accessdenied", "authorizationfailure", "authorizationpermissionmismatch"}
+	vaulticAuthFailureHints = []string{
+		"401", "unauthorized", "authorization failed", "invalidaccesskeyid", "signaturedoesnotmatch",
+		"authentication failed", "permission denied (publickey", "invalid credentials", "bad credentials",
+		"unable to authenticate", "no valid credential",
+	}
+	vaulticNetworkHints = []string{
+		"dial tcp", "no such host", "connection refused", "connection reset", "i/o timeout", "tls:", "x509",
+		"network is unreachable", "no route to host", "eof", "server misbehaving", "proxyconnect",
+	}
+)
 
 // vaulticClassifyProbe maps the engine's outcome to a lifecycle state.
 // passwordGiven tells whether the restic password was part of the attempt.
@@ -94,9 +101,21 @@ func vaulticClassifyProbe(err error, passwordGiven bool) vaulticProbeResult {
 		return vaulticProbeResult{vaulticConnReachable, "Dépôt joignable. Le mot de passe n'a pas encore été vérifié."}
 	}
 	lower := strings.ToLower(message)
+	// Network problems come first: a refused TCP connection says nothing about
+	// the credentials.
+	for _, hint := range vaulticNetworkHints {
+		if strings.Contains(lower, hint) {
+			return vaulticProbeResult{vaulticConnUnavailable, "Erreur réseau : le serveur de stockage ou d'authentification est injoignable (" + message + ")"}
+		}
+	}
+	for _, hint := range vaulticDeniedHints {
+		if strings.Contains(lower, hint) {
+			return vaulticProbeResult{vaulticConnAuthFailed, "Accès refusé : les identifiants sont reconnus mais n'ont pas les droits sur ce conteneur ou dépôt."}
+		}
+	}
 	for _, hint := range vaulticAuthFailureHints {
 		if strings.Contains(lower, hint) {
-			return vaulticProbeResult{vaulticConnAuthFailed, "Le stockage a refusé les identifiants (clés cloud, SSH ou serveur)."}
+			return vaulticProbeResult{vaulticConnAuthFailed, "Identifiants refusés par le stockage (clés cloud, SSH, serveur ou Keystone)."}
 		}
 	}
 	return vaulticProbeResult{vaulticConnUnavailable, "Dépôt inaccessible : " + message}

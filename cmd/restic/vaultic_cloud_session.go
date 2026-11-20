@@ -4,6 +4,7 @@ import (
     "context"
     "errors"
     "fmt"
+    "net"
     "net/http"
     "net/url"
     "strings"
@@ -18,6 +19,7 @@ import (
     "github.com/restic/restic/internal/backend/limiter"
     "github.com/restic/restic/internal/backend/location"
     "github.com/restic/restic/internal/backend/s3"
+    "github.com/restic/restic/internal/backend/swift"
     "github.com/restic/restic/internal/options"
 )
 
@@ -32,6 +34,41 @@ type vaulticCloudAuth struct {
     Region       string
     AzureSAS     bool
     ProjectID    string // Google Cloud project (not a secret)
+
+    // OpenStack Swift through Keystone v3. AccessID holds the user name, or the
+    // application credential ID when AppCredential is set; Secret holds the
+    // password or the application credential secret.
+    AuthURL, UserDomain, Project, ProjectDomain string
+    AppCredential bool
+}
+
+// hasValues reports whether the entry changes anything for its backend.
+func (a vaulticCloudAuth) hasValues() bool {
+    return a.Scheme != "" && (a.hasSecret() || a.ProjectID != "" || a.Region != "" || a.AccountName != "" || a.AuthURL != "")
+}
+
+// vaulticSwiftAuthURL checks a Keystone v3 endpoint. Credentials travel to this
+// address, so it must be HTTPS (plain HTTP only for loopback test servers).
+func vaulticSwiftAuthURL(raw string) (string, error) {
+    raw = strings.TrimSpace(raw)
+    u, err := url.Parse(raw)
+    bad := errors.New("Indiquez l'URL Keystone v3 (ex. https://auth.exemple.fr/v3), sans identifiants ni paramètres.")
+    if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(raw) > 512 {
+        return "", bad
+    }
+    switch u.Scheme {
+    case "https":
+    case "http":
+        if ip := net.ParseIP(u.Hostname()); u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+            return "", errors.New("HTTP n'est autorisé que vers localhost ; utilisez HTTPS pour Keystone.")
+        }
+    default:
+        return "", bad
+    }
+    if !strings.Contains(u.Path, "/v3") {
+        return "", errors.New("Seul Keystone v3 est pris en charge : l'URL doit contenir /v3.")
+    }
+    return raw, nil
 }
 
 // hasSecret reports whether this entry holds anything that must be wiped.
@@ -50,6 +87,22 @@ func (a vaulticCloudAuth) validate() error {
     case "rest":
         if (a.AccessID == "") != (a.Secret == "") {
             return errors.New("Renseignez l'utilisateur et le mot de passe du serveur REST, ou laissez les deux champs vides.")
+        }
+    case "swift":
+        if !a.hasValues() {
+            return nil // native authentication (OS_* environment)
+        }
+        if _, err := vaulticSwiftAuthURL(a.AuthURL); err != nil {
+            return err
+        }
+        if a.AccessID == "" || a.Secret == "" {
+            if a.AppCredential {
+                return errors.New("Renseignez l'ID et le secret de l'Application Credential.")
+            }
+            return errors.New("Renseignez l'utilisateur et le mot de passe OpenStack.")
+        }
+        if !a.AppCredential && (a.UserDomain == "" || a.Project == "" || a.ProjectDomain == "") {
+            return errors.New("Keystone v3 : domaine de l'utilisateur, projet et domaine du projet sont obligatoires.")
         }
     case "gs":
         if a.Secret != "" || a.AccessID != "" {
@@ -134,6 +187,27 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{},error) {
             u:=*p.URL
             u.User=url.UserPassword(f.auth.AccessID,f.auth.Secret)
             copy.URL=&u
+        }
+        return &copy,nil
+    case "swift":
+        p,ok:=cfg.(*swift.Config)
+        if !ok{return nil,errors.New("Configuration Swift invalide")}
+        copy:=*p
+        if f.auth.AuthURL=="" {return &copy,nil} // native authentication
+        // Session credentials replace everything the environment may have
+        // filled in, so ambient OS_* variables can never be mixed in.
+        copy.UserName,copy.UserID,copy.Domain,copy.DomainID,copy.APIKey = "","","","",""
+        copy.Tenant,copy.TenantID,copy.TenantDomain,copy.TenantDomainID,copy.TrustID = "","","","",""
+        copy.StorageURL,copy.AuthToken = "",options.SecretString{}
+        copy.ApplicationCredentialID,copy.ApplicationCredentialName = "",""
+        copy.ApplicationCredentialSecret = options.SecretString{}
+        copy.AuthURL,copy.Region = f.auth.AuthURL,f.auth.Region
+        if f.auth.AppCredential {
+            copy.ApplicationCredentialID=f.auth.AccessID
+            copy.ApplicationCredentialSecret=options.NewSecretString(f.auth.Secret)
+        }else{
+            copy.UserName,copy.APIKey = f.auth.AccessID,f.auth.Secret
+            copy.Domain,copy.Tenant,copy.TenantDomain = f.auth.UserDomain,f.auth.Project,f.auth.ProjectDomain
         }
         return &copy,nil
     case "gs":

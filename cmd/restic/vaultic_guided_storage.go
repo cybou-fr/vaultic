@@ -258,6 +258,9 @@ type vaulticStorageField struct {
 const (
 	vaulticAzureKeyChoice = "Clé de compte"
 	vaulticAzureSASChoice = "Jeton SAS"
+
+	vaulticSwiftPasswordChoice = "Mot de passe"
+	vaulticSwiftAppCredChoice  = "Application Credential"
 )
 
 func vaulticStorageFields(scheme string) []vaulticStorageField {
@@ -285,7 +288,15 @@ func vaulticStorageFields(scheme string) []vaulticStorageField {
 		}
 	case "swift":
 		return []vaulticStorageField{
-			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true}, prefix,
+			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true, Help: "Créé par le moteur restic s'il n'existe pas encore."}, prefix,
+			{Key: "authurl", Label: "URL Keystone v3", Placeholder: "https://auth.exemple.fr/v3", Help: "Vide : variables OS_* du système. Sinon identifiants gardés en mémoire pour cette session."},
+			{Key: "authmode", Label: "Authentification", Choices: []string{vaulticSwiftPasswordChoice, vaulticSwiftAppCredChoice}, Default: vaulticSwiftPasswordChoice},
+			{Key: "username", Label: "Utilisateur / ID", Placeholder: "utilisateur, ou ID de l'Application Credential"},
+			{Key: "secret", Label: "Mot de passe / secret", Secret: true},
+			{Key: "userdomain", Label: "Domaine utilisateur", Default: "Default", Help: "Mode mot de passe seulement."},
+			{Key: "project", Label: "Projet", Placeholder: "nom du projet", Help: "Mode mot de passe seulement."},
+			{Key: "projectdomain", Label: "Domaine du projet", Default: "Default"},
+			{Key: "region", Label: "Région", Placeholder: "facultatif"},
 		}
 	case "rclone":
 		return []vaulticStorageField{
@@ -354,9 +365,12 @@ func vaulticValidateStorageField(scheme, key, value string) error {
 		if v, e := vaulticGuidedStorageField(value); e != nil || !gcpProjectRe.MatchString(v) {
 			err = errors.New("Identifiant de projet invalide.")
 		}
+	case scheme == "swift" && key == "authurl":
+		_, err = vaulticSwiftAuthURL(value)
 	case scheme == "s3" && key == "endpoint":
 		_, err = vaulticCloudEndpoint(value)
-	case key == "endpoint" || key == "access" || key == "account" || key == "region" || key == "username":
+	case key == "endpoint" || key == "access" || key == "account" || key == "region" || key == "username" ||
+		key == "userdomain" || key == "project" || key == "projectdomain":
 		_, err = vaulticCloudField(value)
 	}
 	return err
@@ -412,6 +426,21 @@ func vaulticBuildStorageSetup(scheme string, v map[string]string) (vaulticStorag
 		out.Auth = vaulticCloudAuth{Scheme: "rest", AccessID: strings.TrimSpace(v["username"]), Secret: v["secret"]}
 	case "gs":
 		out.Auth = vaulticCloudAuth{Scheme: "gs", ProjectID: strings.TrimSpace(v["project"])}
+	case "swift":
+		for _, key := range []string{"authurl", "username", "userdomain", "project", "projectdomain", "region"} {
+			if _, err := vaulticCloudField(v[key]); err != nil {
+				return vaulticStorageSetup{}, err
+			}
+		}
+		out.Auth = vaulticCloudAuth{
+			Scheme: "swift", AuthURL: strings.TrimSpace(v["authurl"]), AccessID: strings.TrimSpace(v["username"]),
+			Secret: v["secret"], UserDomain: strings.TrimSpace(v["userdomain"]), Project: strings.TrimSpace(v["project"]),
+			ProjectDomain: strings.TrimSpace(v["projectdomain"]), Region: strings.TrimSpace(v["region"]),
+			AppCredential: v["authmode"] == vaulticSwiftAppCredChoice,
+		}
+		if out.Auth.AuthURL == "" && (out.Auth.AccessID != "" || out.Auth.Secret != "") {
+			return vaulticStorageSetup{}, errors.New("Indiquez l'URL Keystone v3, ou videz les champs pour utiliser les variables OS_* du système.")
+		}
 	}
 	if out.Auth.Scheme != "" {
 		if err := out.Auth.validate(); err != nil {

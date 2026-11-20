@@ -133,6 +133,10 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
     mode.SetSelected("Clé de compte")
     project:=widget.NewEntry()
     project.SetPlaceHolder("ID du projet (facultatif)")
+    keystone:=widget.NewEntry()
+    userDomain:=widget.NewEntry()
+    projectDomain:=widget.NewEntry()
+    swiftMode:=widget.NewSelect([]string{vaulticSwiftPasswordChoice,vaulticSwiftAppCredChoice},nil)
     fields:=[]*widget.FormItem{}
     switch scheme {
     case "s3":
@@ -159,6 +163,21 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
         )
     case "gs":
         fields=append(fields,widget.NewFormItem("ID du projet Google Cloud",project))
+    case "swift":
+        keystone.SetPlaceHolder("https://auth.exemple.fr/v3")
+        swiftMode.SetSelected(vaulticSwiftPasswordChoice)
+        userDomain.SetText("Default")
+        projectDomain.SetText("Default")
+        fields=append(fields,
+            widget.NewFormItem("URL Keystone v3",keystone),
+            widget.NewFormItem("Authentification",swiftMode),
+            widget.NewFormItem("Utilisateur / ID",id),
+            widget.NewFormItem("Mot de passe / secret",secret),
+            widget.NewFormItem("Domaine utilisateur",userDomain),
+            widget.NewFormItem("Projet",project),
+            widget.NewFormItem("Domaine du projet",projectDomain),
+            widget.NewFormItem("Région",region),
+        )
     default:
         dialog.ShowInformation("Backend","Les identifiants de ce backend sont gérés par sa configuration système (SSH, rclone, variables OpenStack…).",parent)
         return
@@ -172,16 +191,27 @@ func vaulticShowCloudSessionWizard(parent fyne.Window, scheme string, apply func
         confirm,
     )
     dlg:=dialog.NewCustom("Accès cloud","Fermer",body,parent)
-    dlg.Resize(fyne.NewSize(590,460))
+    height:=float32(460)
+    if scheme=="swift"{height=660}
+    dlg.Resize(fyne.NewSize(590,height))
     confirm.OnTapped=func(){
         auth:=vaulticCloudAuth{
             Scheme:scheme,
             AccessID:id.Text,
             Secret:secret.Text,
-            Region:region.Text,
+            Region:strings.TrimSpace(region.Text),
             AccountName:strings.TrimSpace(account.Text),
             AzureSAS:mode.Selected=="Jeton SAS",
             ProjectID:strings.TrimSpace(project.Text),
+        }
+        if scheme=="swift"{
+            auth.ProjectID=""
+            auth.AuthURL=strings.TrimSpace(keystone.Text)
+            auth.UserDomain=strings.TrimSpace(userDomain.Text)
+            auth.ProjectDomain=strings.TrimSpace(projectDomain.Text)
+            auth.Project=strings.TrimSpace(project.Text)
+            auth.AppCredential=swiftMode.Selected==vaulticSwiftAppCredChoice
+            auth.AccountName=""
         }
         if err:=auth.validate();err!=nil{dialog.ShowError(err,parent);return}
         if err:=apply(auth);err!=nil{dialog.ShowError(err,parent);return}

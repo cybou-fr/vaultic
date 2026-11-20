@@ -23,7 +23,7 @@ var vaulticBackendCatalog = []vaulticBackendInfo{
  {"b2","Backblaze B2","b2:mon-bucket:vaultic","Stockage objet Backblaze B2 via son API native.","B2_ACCOUNT_ID et B2_ACCOUNT_KEY configurés dans l'environnement.",false},
  {"azure","Azure Blob Storage","azure:mon-container:vaultic","Conteneur Azure Blob Storage.","AZURE_ACCOUNT_NAME avec clé, SAS ou une autre méthode d'authentification Azure configurée.",false},
  {"gs","Google Cloud Storage","gs:mon-bucket:vaultic","Bucket de stockage Google Cloud.","Identité Google Cloud configurée (ADC / compte de service et permissions bucket).",false},
- {"swift","OpenStack Swift","swift:mon-container:/vaultic","Stockage objet OpenStack Swift.","Variables d'environnement OpenStack/Swift pour l'identité, l'endpoint et le projet.",false},
+ {"swift","OpenStack Swift","swift:mon-container:/vaultic","Stockage objet OpenStack Swift.","Identifiants Keystone v3 (mot de passe ou Application Credential) saisis dans Vaultic et gardés en mémoire, ou variables OS_* du système.",false},
  {"rclone","rclone — autres fournisseurs","rclone:remote:vaultic","Passerelle vers les remotes pris en charge par rclone (selon configuration).","Programme rclone installé et remote configuré séparément.",true},
 }
 
