@@ -879,6 +879,7 @@ func vaulticMain() {
     startBackup.Importance=widget.HighImportance
     setupButton:=widget.NewButtonWithIcon("Configurer le dépôt",theme.SettingsIcon(),nil)
     viewSnapshots:=widget.NewButtonWithIcon("Voir les instantanés",theme.HistoryIcon(),nil)
+    viewStorage:=widget.NewButtonWithIcon("Espace de stockage",theme.StorageIcon(),nil)
     snapshotOverview:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dernière activité",19),
         recentSnapshotValue,
@@ -896,7 +897,7 @@ func vaulticMain() {
     )
     overviewPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
         vaulticHeading("Vue d’ensemble",26),
-        container.NewHBox(startBackup,setupButton),statGrid,snapshotOverview,
+        container.NewHBox(startBackup,setupButton,viewStorage),statGrid,snapshotOverview,
     )))
     backupPage:=container.NewBorder(
         container.NewPadded(container.NewVBox(
@@ -991,6 +992,7 @@ func vaulticMain() {
     setupButton.OnTapped=func(){navigate(6)}
     startBackup.OnTapped=func(){navigate(1)}
     viewSnapshots.OnTapped=func(){navigate(2)}
+    viewStorage.OnTapped=func(){navigate(3)}
     sidebarBg:=canvas.NewRectangle(vaulticSidebar)
     brand:=container.NewHBox(container.NewGridWrap(fyne.NewSize(40,40),widget.NewIcon(vaulticAppIcon())),container.NewCenter(vaulticHeading("Vaultic",24)))
     sidebar:=container.NewStack(sidebarBg,container.NewPadded(container.NewBorder(
