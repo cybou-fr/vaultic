@@ -175,6 +175,19 @@ func vaulticMain() {
     activeRepository := saved.Repository
     repoEntry := widget.NewEntry()
     repoEntry.SetPlaceHolder("Chemin local ou adresse rest:https://…")
+    backendInfo:=vaulticWrappedLabel("Choisissez un type de stockage pour afficher les prérequis et un exemple d'adresse.")
+    backendSelect:=widget.NewSelect(vaulticBackendLabels(),func(label string){
+        backend,ok:=vaulticBackendByLabel(label)
+        if !ok{return}
+        backendInfo.SetText(vaulticBackendDescription(backend))
+        repoEntry.SetPlaceHolder(backend.Example)
+    })
+    backendSelect.SetSelected(vaulticBackendCatalog[0].Label)
+    repoEntry.OnChanged=func(value string){
+        if strings.TrimSpace(value)==""{return}
+        info,ok:=vaulticBackendForAddress(value)
+        if ok && backendSelect.Selected!=info.Label{backendSelect.SetSelected(info.Label)}
+    }
     depotName := widget.NewEntry()
     depotName.SetPlaceHolder("Ex. : Disque externe")
     depotSelect := widget.NewSelect(nil, nil)
@@ -265,6 +278,7 @@ func vaulticMain() {
             cancelButton.Enable()
             cancelButton.Show()
             repoEntry.Disable()
+            backendSelect.Disable()
             depotName.Disable()
             depotSelect.Disable()
             passEntry.Disable()
@@ -275,6 +289,7 @@ func vaulticMain() {
             progressPlaceholder.Hide()
             progressSlot.Hide()
             repoEntry.Enable()
+            backendSelect.Enable()
             depotName.Enable()
             passEntry.Enable()
             newPassword.Enable()
@@ -763,16 +778,15 @@ func vaulticMain() {
 
     snapshotList:=widget.NewList(
         func()int{return len(snapshots)},
-        vaulticListLabel,
+        vaulticTimelineTemplate,
         func(id widget.ListItemID,obj fyne.CanvasObject){
-            if id>=0 && id<len(snapshots){
-                sn:=snapshots[id]
-                display:=sn.Time.Local().Format("02/01/2006 15:04")+"  ·  "+sn.ShortID+"  ·  "+sn.Hostname
-                if metrics,ok:=snapshotMetricsCache[sn.ID];ok{
-                    display+=fmt.Sprintf("  ·  %d fichiers  ·  %s",metrics.Files,vaulticBytes(metrics.LogicalFileBytes))
-                }
-                obj.(*widget.Label).SetText(display)
-            }
+            if id<0 || id>=len(snapshots){return}
+            sn:=snapshots[id]
+            var previous *vaulticSnapshot
+            if id>0{previous=&snapshots[id-1]}
+            var metrics *vaulticSnapshotMetrics
+            if savedMetrics,ok:=snapshotMetricsCache[sn.ID];ok{metrics=&savedMetrics}
+            vaulticUpdateTimelineRow(obj,sn,previous,metrics)
         },
     )
     snapshotEmptyLabel := vaulticWrappedLabel("Actualisez l’historique pour afficher les instantanés du dépôt.")
@@ -896,13 +910,36 @@ func vaulticMain() {
             sourceID:=ids[compareSelect.Selected]
             if sourceID=="" || sourceID==target.ID{return}
             var comparison vaulticSnapshotComparison
+            originalRepo:=vaulticResolvedRepository(activeRepository)
+            knownSnapshots:=append([]vaulticSnapshot(nil),snapshots...)
             runWithDepot("Comparaison des instantanés",activeRepository,passEntry.Text,false,
                 func(ctx context.Context,g global.Options)error{
                     var err error
                     comparison,err=vaulticCompareSnapshots(ctx,g,sourceID,target.ID)
                     return err
                 },func()error{
-                    vaulticShowVisualComparison(a,comparison)
+                    vaulticShowVisualComparison(a,comparison,func(snapshotID,selectedPath string){
+                        if originalRepo!=vaulticResolvedRepository(activeRepository){
+                            dialog.ShowInformation("Dépôt modifié","Revenez au dépôt d'origine avant de restaurer cet élément.",w)
+                            return
+                        }
+                        var sourceSnapshot vaulticSnapshot
+                        found:=false
+                        for _,sn:=range knownSnapshots {
+                            if sn.ID==snapshotID{sourceSnapshot=sn;found=true;break}
+                        }
+                        if !found {
+                            dialog.ShowInformation("Instantané introuvable","Actualisez la liste des instantanés.",w)
+                            return
+                        }
+                        vaulticOpenExplorerAtPath(a,sourceSnapshot,func(title string,operation func(context.Context,global.Options)error){
+                            if originalRepo!=vaulticResolvedRepository(activeRepository){
+                                dialog.ShowInformation("Dépôt modifié","Le dépôt a changé. Fermez cet explorateur puis rechargez l'historique.",w)
+                                return
+                            }
+                            run(title,operation)
+                        },selectedPath)
+                    })
                     return nil
                 },nil)
         },w).Show()
@@ -1038,6 +1075,7 @@ func vaulticMain() {
     // restic engine; this shell only changes presentation and navigation.
     fields:=widget.NewForm(
         widget.NewFormItem("Nom",depotName),
+        widget.NewFormItem("Type",backendSelect),
         widget.NewFormItem("Emplacement",container.NewBorder(nil,nil,nil,browseRepo,repoEntry)),
         widget.NewFormItem("Mot de passe",newPassword),
     )
@@ -1045,6 +1083,8 @@ func vaulticMain() {
         vaulticHeading("Ajouter un dépôt",20),
         vaulticWrappedLabel("Choisissez un dossier local ou un disque externe, ou saisissez une adresse de dépôt distant."),
         fields,
+        backendInfo,
+        vaulticCaption("Les identifiants cloud ne sont pas stockés ici. Ils doivent être configurés séparément dans l'environnement ou par le fournisseur."),
         container.NewHBox(initButton,connectButton),
     ))
     activeConfiguration:=vaulticSurface(container.NewVBox(
@@ -1099,7 +1139,7 @@ func vaulticMain() {
     )
     snapshotPage:=container.NewBorder(
         container.NewPadded(container.NewVBox(
-            vaulticPageHeading("Instantanés","Parcourez les fichiers d’un instantané ou restaurez-le en entier."),
+            vaulticPageHeading("Chronologie des instantanés","Parcourez les versions par date, comparez les changements et restaurez vos fichiers."),
             refreshButton,
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(

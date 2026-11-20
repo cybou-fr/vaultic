@@ -8,6 +8,7 @@ import (
 
  "fyne.io/fyne/v2"
  "fyne.io/fyne/v2/container"
+ "fyne.io/fyne/v2/theme"
  "fyne.io/fyne/v2/widget"
 )
 
@@ -50,6 +51,21 @@ func vaulticFilterDiffChanges(changes []vaulticDiffRecord, category, search stri
  return filtered
 }
 
+
+// Restore removed elements from Before; additions/modifications from After.
+// Restic directory changes sometimes end in '/', which is only stripped here.
+func vaulticDiffRestoreSelection(c vaulticSnapshotComparison,entry vaulticDiffRecord)(string,string,error){
+    if entry.Truncated{return "","",fmt.Errorf("Chemin trop long pour une restauration directe. Ouvrez l'instantané dans l'explorateur.")}
+    itemPath:=strings.TrimSuffix(entry.Path,"/")
+    if itemPath=="/" || vaulticValidateSnapshotPath(itemPath)!=nil {
+        return "","",fmt.Errorf("Chemin impossible à restaurer : %q",entry.Path)
+    }
+    id:=c.TargetID
+    if vaulticDiffCategory(entry.Modifier)==vaulticDiffRemoved{id=c.SourceID}
+    if !vaulticSnapshotID.MatchString(id){return "","",fmt.Errorf("Identifiant d'instantané invalide")}
+    return id,itemPath,nil
+}
+
 func vaulticDiffDisplayPath(p string)string{return strconv.Quote(p)}
 
 func vaulticDiffColumns(change vaulticDiffRecord)(before,after string){
@@ -86,7 +102,7 @@ func vaulticDiffVisibleStatus(c vaulticSnapshotComparison,category string,displa
 }
 
 // One virtualized table synchronizes the Before and After columns when scrolling.
-func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotComparison) {
+func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotComparison, openForRestore func(snapshotID,filepath string)) {
  w:=app.NewWindow("Vaultic — Avant / Après")
  w.Resize(fyne.NewSize(1060,740))
  heading:=vaulticHeading("Comparer les instantanés",25)
@@ -104,6 +120,18 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
  query.SetPlaceHolder("Rechercher un chemin dans l'aperçu…")
  rows:=vaulticFilterDiffChanges(comparison.Changes,vaulticDiffAll,"")
  details:=vaulticWrappedLabel("Sélectionnez une ligne pour afficher le type de changement et le chemin.")
+ restoreSelected:=widget.NewButtonWithIcon("Ouvrir pour restaurer…",theme.FolderOpenIcon(),nil)
+ restoreSelected.Disable()
+ var selected *vaulticDiffRecord
+ restoreSelected.OnTapped=func(){
+    if selected==nil || openForRestore==nil{return}
+    id,focused,err:=vaulticDiffRestoreSelection(comparison,*selected)
+    if err!=nil{
+        dialog.ShowError(err,w)
+        return
+    }
+    openForRestore(id,focused)
+ }
  counter:=vaulticWrappedLabel(vaulticDiffVisibleStatus(comparison,vaulticDiffAll,len(rows),""))
  table:=widget.NewTable(
   func()(int,int){return len(rows),2},
@@ -122,11 +150,16 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
  table.SetColumnWidth(1,450)
  table.OnSelected=func(cell widget.TableCellID){
   if cell.Row<0||cell.Row>=len(rows){return}
-  details.SetText(vaulticDiffRowDescription(rows[cell.Row]))
+  entry:=rows[cell.Row]
+  selected=&entry
+  details.SetText(vaulticDiffRowDescription(entry))
+  if openForRestore!=nil && !entry.Truncated{restoreSelected.Enable()}else{restoreSelected.Disable()}
  }
  refresh:=func(){
   rows=vaulticFilterDiffChanges(comparison.Changes,category.Selected,query.Text)
   table.UnselectAll()
+  selected=nil
+  restoreSelected.Disable()
   table.Refresh()
   details.SetText("Sélectionnez une ligne pour afficher le type de changement et le chemin.")
   counter.SetText(vaulticDiffVisibleStatus(comparison,category.Selected,len(rows),query.Text))
@@ -143,8 +176,10 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
   ),
   container.NewVBox(
    details,
+   restoreSelected,
    counter,
-   vaulticCaption("Lecture seule · éléments inchangés non affichés · métadonnées seules non comparées"),
+   vaulticCaption("Lecture seule · la restauration s'effectue dans le navigateur du snapshot après confirmation."),
+   vaulticCaption("Éléments inchangés non affichés · métadonnées seules non comparées"),
   ),
   nil,nil,
   vaulticSurface(table),

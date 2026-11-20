@@ -68,6 +68,7 @@ type vaulticDiffRecord struct {
     MessageType string `json:"message_type"`
     Path string `json:"path"`
     Modifier string `json:"modifier"`
+    Truncated bool `json:"-"`
 }
 type vaulticSnapshotComparison struct {
     SourceID string
@@ -114,7 +115,7 @@ func (c *vaulticDiffCollector) collectLine(line []byte){
             // Long and control-character paths must not overwhelm the UI.
             if len(item.Path)>700 {
                 chars:=[]rune(item.Path)
-                if len(chars)>300 {item.Path=string(chars[:300])+"…"}
+                if len(chars)>300 {item.Path=string(chars[:300])+"…";item.Truncated=true}
             }
             c.result.Changes=append(c.result.Changes,item)
         }

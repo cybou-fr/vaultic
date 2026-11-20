@@ -56,6 +56,18 @@ On the **Snapshots** screen, **Taille et fichiers…** measures regular file cou
 
 Category totals reflect the **entire native restic diff**, while only the first **180 changes per category** are retained for display (up to 540 paths), keeping memory bounded. Search is limited to retained paths, and the UI explicitly discloses that limit. Unchanged files are not listed, and metadata-only changes are not enabled. Comparing never modifies a repository or snapshot.
 
+## Supported backup storage backends
+
+The **Settings → Add repository → Type** selector exposes the **nine backends registered in the embedded restic engine**: local, SFTP, REST, S3-compatible storage, Backblaze B2, Azure Blob Storage, Google Cloud Storage, OpenStack Swift and rclone. Each selection provides a sample repository address and connection requirements, and validation uses restic's original location parser.
+
+SFTP requires an external SSH client; rclone requires an external installed and configured rclone program. All other registered backends are provided as Go libraries within the engine, though remote storage naturally requires network access and suitable credentials. Cloud credentials should be configured externally through the provider and supported environment variables; Vaultic does not store cloud API keys in settings. The restic repository password is separate.
+
+### Timeline and guided file restoration
+
+The **Snapshots** page groups entries by day on a visual timeline. Size and file counts appear on the corresponding row after manual analysis.
+
+From the **Before / After** comparison window, select a changed path and click **Ouvrir pour restaurer…** to open the appropriate snapshot in the file explorer. Removed files open the *Before* snapshot; additions and modifications open the *After* snapshot. The file is preselected when its type permits restoration. The user must still choose an empty destination and confirm the restore. Existing files are never deliberately overwritten.
+
 ## Manual tests
 
 ```bash

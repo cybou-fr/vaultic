@@ -54,3 +54,31 @@ func TestVaulticDiffPathNewlineEscaped(t *testing.T) {
  text:=vaulticDiffDisplayPath("/folder/line\nbreak.txt")
  if strings.Contains(text,"\n")||!strings.Contains(text,"\\n"){t.Fatalf("unsafe display: %q",text)}
 }
+
+func TestVaulticDiffRestoreSelectionUsesCorrectSnapshot(t *testing.T){
+ comparison:=vaulticSnapshotComparison{SourceID:"abcdef1234567890",TargetID:"fedcba1234567890"}
+ cases:=[]struct{modifier,expected string}{
+  {"+",comparison.TargetID},
+  {"M",comparison.TargetID},
+  {"-",comparison.SourceID},
+  {"T",comparison.TargetID},
+ }
+ for _,tc:=range cases{
+  id,p,err:=vaulticDiffRestoreSelection(comparison,vaulticDiffRecord{Path:"/Documents/report.txt",Modifier:tc.modifier})
+  if err!=nil||id!=tc.expected||p!="/Documents/report.txt"{t.Errorf("%q => %q %q %v",tc.modifier,id,p,err)}
+ }
+ if _,p,err:=vaulticDiffRestoreSelection(comparison,vaulticDiffRecord{Path:"/Folder/",Modifier:"-"});err!=nil||p!="/Folder"{
+  t.Fatalf("directory: %q %v",p,err)
+ }
+ for _,invalid:=range []string{"/","relative/path","/folder/../secret","/bad\x00file"} {
+  if _,_,err:=vaulticDiffRestoreSelection(comparison,vaulticDiffRecord{Path:invalid,Modifier:"+"});err==nil{
+   t.Errorf("unsafe path accepted: %q",invalid)
+  }
+ }
+}
+
+func TestVaulticDiffRefusesTruncatedRestoration(t *testing.T){
+ c:=vaulticSnapshotComparison{SourceID:"abcdef1234567890",TargetID:"fedcba1234567890"}
+ _,_,err:=vaulticDiffRestoreSelection(c,vaulticDiffRecord{Path:"/long…",Modifier:"+",Truncated:true})
+ if err==nil{t.Fatal("truncated path could be restored")}
+}

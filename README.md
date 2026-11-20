@@ -97,6 +97,23 @@ Le bouton **Comparer…** ouvre maintenant une fenêtre dédiée avec **deux col
 
 Les nombres par catégorie sont calculés sur **l'ensemble** du diff restic, mais l'interface ne garde que **180 chemins par catégorie** (au plus 540 au total), pour limiter l'usage de mémoire sur les très grands dépôts. La recherche ne s'applique qu'aux chemins retenus dans cet aperçu ; les totaux complets restent affichés. Les éléments inchangés ne sont pas listés et les changements de métadonnées seuls ne sont pas activés. La comparaison est en lecture seule et ne modifie aucun instantané.
 
+## Types de stockage pris en charge
+
+Le sélecteur **Paramètres → Ajouter un dépôt → Type** présente les **neuf backends enregistrés** dans le moteur restic intégré : **local**, **SFTP**, **REST**, **S3**, **Backblaze B2**, **Azure Blob**, **Google Cloud Storage**, **OpenStack Swift** et **rclone**. Chaque sélection affiche un exemple d'adresse et les prérequis de connexion. Les adresses sont validées par le parseur restic réel.
+
+- `local:` : dossiers, SSD, USB et NAS montés.
+- `sftp:` : serveur SSH (client SSH externe requis).
+- `rest:` : serveur REST restic.
+- `s3:` : S3 et services compatibles, y compris MinIO selon endpoint.
+- `b2:`, `azure:`, `gs:`, `swift:` : stockage objet chez le fournisseur indiqué.
+- `rclone:` : remotes rclone (programme et configuration externes requis).
+
+**Important :** la prise en charge d'un backend par le moteur ne signifie pas qu'une connexion ou une authentification cloud est automatiquement configurée. Les identifiants et variables d'environnement nécessaires doivent être fournis par le système ou le fournisseur ; Vaultic ne stocke pas de clés cloud dans ses préférences. Le mot de passe du dépôt restic reste distinct.
+
+### Chronologie et restauration ciblée
+
+La page **Instantanés** affiche maintenant une chronologie avec un marqueur de nouveau jour et des détails de taille quand ils ont été calculés. Depuis la comparaison **Avant / Après**, sélectionnez une ligne et choisissez **Ouvrir pour restaurer…** : Vaultic ouvre l'instantané approprié (avant pour les fichiers supprimés, après pour les ajouts ou modifications), dans son explorateur, avec le chemin déjà sélectionné lorsque le type de fichier est restaurable. Il faut encore **choisir un dossier de destination vide et confirmer** la restauration ; aucun fichier n'est remplacé automatiquement.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
