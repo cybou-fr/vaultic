@@ -78,6 +78,9 @@ func vaulticOpenExplorer(app fyne.App, snapshot vaulticSnapshot, run func(string
 		if hasRow {
 			node := nodes[selected]
 			details.SetText(node.Path)
+			if !vaulticRestorableNode(node) {
+				details.SetText(node.Path + " · Type non restaurable")
+			}
 			if _, ok := picked[node.Path]; ok {
 				toggle.SetText("Retirer de la sélection")
 			}

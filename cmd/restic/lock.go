@@ -24,6 +24,7 @@ func internalOpenWithLocked(ctx context.Context, gopts global.Options, dryRun bo
 			}
 		}, printer.E)
 		if err != nil {
+			_ = repo.Close()
 			return nil, nil, nil, err
 		}
 
@@ -32,7 +33,10 @@ func internalOpenWithLocked(ctx context.Context, gopts global.Options, dryRun bo
 		repo.SetDryRun()
 	}
 
-	return ctx, repo, unlock, nil
+	return ctx, repo, func() {
+		unlock()
+		_ = repo.Close()
+	}, nil
 }
 
 func openWithReadLock(ctx context.Context, gopts global.Options, noLock bool, printer progress.Printer) (context.Context, *repository.Repository, func(), error) {

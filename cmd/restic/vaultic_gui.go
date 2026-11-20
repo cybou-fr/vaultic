@@ -31,7 +31,6 @@ import (
     "github.com/restic/restic/internal/global"
     "github.com/restic/restic/internal/repository"
     "github.com/restic/restic/internal/restic"
-    "github.com/restic/restic/internal/restorer"
     "github.com/restic/restic/internal/ui"
 )
 
@@ -104,6 +103,13 @@ func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
     for _, source := range sources {
         abs, err := filepath.Abs(source)
         if err != nil { return nil, err }
+        info, err := os.Lstat(abs)
+        if err != nil {
+            return nil, fmt.Errorf("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w", abs, err)
+        }
+        if !info.IsDir() && !info.Mode().IsRegular() {
+            return nil, fmt.Errorf("Choisissez directement un fichier ou un dossier ordinaire : %s", abs)
+        }
         if real, e := filepath.EvalSymlinks(abs); e == nil { abs = real }
         if _, err := os.Stat(abs); err != nil {
             return nil, fmt.Errorf("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w", abs, err)
@@ -119,12 +125,20 @@ func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
 var vaulticSnapshotID = regexp.MustCompile(`^[a-fA-F0-9]{8,64}$`)
 
 func vaulticRestoreTarget(target string) (string, error) {
+    if target == "" { return "", errors.New("Choisissez un dossier de restauration") }
     abs, err := filepath.Abs(target)
     if err != nil { return "", err }
-    entries, err := os.ReadDir(abs)
+    info, err := os.Lstat(abs)
+    if err != nil { return "", fmt.Errorf("Dossier de restauration inaccessible : %w", err) }
+    if !info.IsDir() || info.Mode() & (os.ModeSymlink | os.ModeIrregular) != 0 {
+        return "", errors.New("Choisissez un dossier de restauration qui n’est pas un lien")
+    }
+    canonical, err := filepath.EvalSymlinks(abs)
+    if err != nil { return "", err }
+    entries, err := os.ReadDir(canonical)
     if err != nil { return "", fmt.Errorf("Choisissez un dossier de restauration existant et vide : %w", err) }
     if len(entries) > 0 { return "", errors.New("Pour éviter tout écrasement, choisissez un dossier de restauration vide") }
-    return abs, nil
+    return canonical, nil
 }
 
 func vaulticMain() {
@@ -134,7 +148,7 @@ func vaulticMain() {
     w := a.NewWindow("Vaultic — sauvegardes chiffrées")
     w.SetMaster()
 
-    saved := vaulticLoadSettings()
+    saved, settingsErr := vaulticLoadSettings()
     profileIndex := saved.migrateBackupProfiles()
     for _, profile := range saved.Profiles {
         for i, source := range profile.Sources {
@@ -193,6 +207,7 @@ func vaulticMain() {
         logs.SetText(logText)
     }
     persist := func(depots []vaulticDepot, active string) error {
+        if settingsErr != nil { return settingsErr }
         profiles := make([]vaulticBackupProfile, len(saved.Profiles))
         for i, profile := range saved.Profiles {
             storedSources := make([]string, len(profile.Sources))
@@ -214,6 +229,15 @@ func vaulticMain() {
 
     var busy atomic.Bool
     var cancelOp context.CancelFunc
+    closing := false
+    closePrompt := false
+    closeWindow := func() {
+        save()
+        passEntry.SetText("")
+        newPassword.SetText("")
+        w.SetCloseIntercept(nil)
+        w.Close()
+    }
     var actionButtons []*widget.Button
     var updateActions func()
     var windowContent *fyne.Container
@@ -255,7 +279,7 @@ func vaulticMain() {
 
     // Called from the restic worker's goroutines; all widget access is marshaled
     // onto Fyne's UI thread. restic emits native JSON backup progress.
-    onOutput := func(ctx context.Context, title, line string, report *vaulticBackupReport) {
+    onOutput := func(ctx context.Context, title, line string, report *vaulticBackupReport, redact func(string) string) {
         if line == "" { return }
         var e vaulticEngineEvent
         if json.Unmarshal([]byte(line), &e) == nil {
@@ -301,6 +325,7 @@ func vaulticMain() {
                 }
             }
         }
+        line = redact(line)
         fyne.Do(func(){ appendLog(line) })
     }
 
@@ -323,8 +348,9 @@ func vaulticMain() {
         progress.SetValue(0)
         status.SetText(title+"…")
         appendLog("Début : "+title)
+        redact := vaulticRedactOperation(password)
         go func(){
-            terminal := &vaulticTerminal{line:func(line string){onOutput(ctx, title, line, report)},output:io.Discard}
+            terminal := &vaulticTerminal{line:func(line string){onOutput(ctx, title, line, report, redact)},output:io.Discard}
             gopts := global.Options{
                 Repo: vaulticResolvedRepository(repo), Password: password, Backends: all.Backends(),
                 Term:terminal, JSON:true, Verbosity:1,
@@ -345,9 +371,15 @@ func vaulticMain() {
                 if errors.Is(err, repository.ErrNoKeyFound) {
                     err = errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
                 }
+                if closing {
+                    if err == nil && finish != nil { _ = finish() }
+                    closeWindow()
+                    return
+                }
                 if report != nil {
                     var outcome string
                     outcome, lastBackupReport, err = report.result(err)
+                    lastBackupReport = redact(lastBackupReport)
                     status.SetText("Sauvegarde · " + outcome)
                     appendLog("Sauvegarde · " + lastBackupReport)
                     if err == nil { recentRunValue.SetText(title) }
@@ -366,8 +398,9 @@ func vaulticMain() {
                 }
                 if err != nil {
                     status.SetText("Erreur : "+title)
-                    appendLog(err.Error())
-                    dialog.ShowError(err,w)
+                    message := redact(err.Error())
+                    appendLog(message)
+                    dialog.ShowError(errors.New(message),w)
                     return
                 }
                 status.SetText(title+" — terminé")
@@ -684,8 +717,7 @@ func vaulticMain() {
                     if !ok{return}
                     // Recheck immediately before starting the restoration.
                     run("Restauration",func(ctx context.Context,g global.Options)error{
-                        if _,err:=vaulticRestoreTarget(dest);err!=nil{return err}
-                        return runRestore(ctx,RestoreOptions{Target:dest, Overwrite:restorer.OverwriteNever, InheritWindowsPermissions:true},g,g.Term,[]string{id})
+                        return vaulticRestoreSnapshot(ctx,g,id,nil,dest)
                     })
                 },w)
         },w).Show()
@@ -900,12 +932,25 @@ func vaulticMain() {
     refreshProfiles()
     w.SetContent(windowContent)
     w.SetCloseIntercept(func(){
-        if busy.Load(){dialog.ShowInformation("Opération en cours","Arrêtez l'opération avant de quitter Vaultic.",w);return}
-        save()
-        w.SetCloseIntercept(nil)
-        w.Close()
+        if closing || closePrompt { return }
+        if busy.Load() {
+            closePrompt = true
+            dialog.ShowConfirm("Quitter Vaultic", "Annuler l’opération et fermer Vaultic après son arrêt ?", func(ok bool) {
+                closePrompt = false
+                if !ok { return }
+                if cancelOp == nil { closeWindow(); return }
+                closing = true
+                cancelOp()
+                status.SetText("Annulation avant fermeture…")
+            }, w)
+            return
+        }
+        closeWindow()
     })
     vaulticShowWindow(w, fyne.NewSize(1180,760), fyne.NewSize(640,365))
+    if settingsErr != nil {
+        dialog.ShowError(fmt.Errorf("Enregistrement des préférences désactivé pour cette session : %w", settingsErr), w)
+    }
     a.Run()
 }
 

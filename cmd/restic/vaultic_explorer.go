@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -112,7 +113,6 @@ func vaulticSearchSnapshot(ctx context.Context, opts global.Options, id, query s
 	if err != nil {
 		return nil, false, err
 	}
-	defer repo.Close()
 	defer unlock()
 	var filter data.SnapshotFilter
 	snapshot, _, err := filter.FindLatest(ctx, repo, repo, id)
@@ -205,7 +205,18 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 			return errors.New("Type d'élément non pris en charge")
 		}
 	}
+	return vaulticRestoreSnapshot(ctx, opts, id, nodes, destination)
+}
+
+func vaulticRestoreSnapshot(ctx context.Context, opts global.Options, id string, nodes []vaulticSnapshotNode, destination string) error {
+	if !vaulticSnapshotID.MatchString(id) {
+		return errors.New("Identifiant d'instantané invalide")
+	}
 	target, err := vaulticRestoreTarget(destination)
+	if err != nil {
+		return err
+	}
+	originalTarget, err := os.Stat(target)
 	if err != nil {
 		return err
 	}
@@ -214,7 +225,6 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 	if err != nil {
 		return err
 	}
-	defer repo.Close()
 	defer unlock()
 	var filter data.SnapshotFilter
 	snapshot, subfolder, err := filter.FindLatest(ctx, repo, repo, id)
@@ -228,6 +238,23 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 	if err != nil {
 		return err
 	}
+	selectNode := func(string, bool) (bool, bool) { return true, true }
+	if len(nodes) > 0 {
+		selectNode = vaulticSelectionFilter(nodes)
+	}
+	if err := vaulticCheckRestoreTree(ctx, repo, snapshot.Tree, selectNode); err != nil {
+		return err
+	}
+	if _, err := vaulticRestoreTarget(target); err != nil {
+		return err
+	}
+	currentTarget, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(originalTarget, currentTarget) {
+		return errors.New("Le dossier de restauration a changé. Sélectionnez-le à nouveau.")
+	}
 	progress := restoreui.NewProgress(printer, ui.CalculateProgressInterval(!opts.Quiet, true, opts.Term.CanUpdateStatus()))
 	r := restorer.NewRestorer(repo, snapshot, restorer.Options{
 		Progress:                  progress,
@@ -235,7 +262,7 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 		InheritWindowsPermissions: true,
 		Delete:                    false,
 	})
-	r.SelectFilter = vaulticSelectionFilter(nodes)
+	r.SelectFilter = selectNode
 	r.Error = func(location string, e error) error {
 		printer.E("Erreur de restauration de %q : %v", location, e)
 		return e
@@ -246,5 +273,5 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 }
 
 func vaulticRestorableNode(node vaulticSnapshotNode) bool {
-	return node.Type == "dir" || node.Type == "file" || node.Type == "symlink"
+	return node.Type == "dir" || node.Type == "file"
 }

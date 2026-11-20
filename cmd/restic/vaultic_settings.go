@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -125,18 +126,40 @@ func vaulticSettingsPath() string {
 	return filepath.Join(dir, "Vaultic", "settings.json")
 }
 
-func vaulticLoadSettings() vaulticSettings {
+func vaulticLoadSettings() (vaulticSettings, error) {
 	var s vaulticSettings
-	if data, err := os.ReadFile(vaulticSettingsPath()); err == nil {
-		_ = json.Unmarshal(data, &s)
+	path := vaulticSettingsPath()
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return s, nil
+	}
+	if err != nil {
+		return s, err
+	}
+	if !info.Mode().IsRegular() {
+		return s, errors.New("Le fichier de préférences doit être un fichier ordinaire")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return s, err
+	}
+	if err := json.Unmarshal(data, &s); err != nil {
+		return vaulticSettings{}, fmt.Errorf("Préférences illisibles : %w", err)
 	}
 	s.migrateDepots()
-	return s
+	return s, nil
 }
 
 func vaulticSaveSettings(s vaulticSettings) error {
 	path := vaulticSettingsPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return errors.New("Le fichier de préférences doit être un fichier ordinaire")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if strings.TrimSpace(s.Repository) == "" {
@@ -156,6 +179,10 @@ func vaulticSaveSettings(s vaulticSettings) error {
 		return err
 	}
 	if _, err = f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Sync(); err != nil {
 		_ = f.Close()
 		return err
 	}

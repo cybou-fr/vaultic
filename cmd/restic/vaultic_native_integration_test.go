@@ -14,6 +14,7 @@ import (
     "github.com/restic/restic/internal/data"
     "github.com/restic/restic/internal/global"
     "github.com/restic/restic/internal/repository"
+    "github.com/restic/restic/internal/ui"
 )
 
 // This is intentionally an in-process integration test: it invokes the same
@@ -73,9 +74,17 @@ func TestVaulticNativeEngineRoundTrip(t *testing.T) {
     }
     target, err := vaulticRestoreTarget(restoredPath)
     if err != nil { t.Fatalf("validate restore target: %v", err) }
-    if err := runRestore(ctx, RestoreOptions{Target:target, InheritWindowsPermissions:true}, opts, term, []string{snapshots[0].ID}); err != nil {
+    if err := vaulticRestoreSnapshot(ctx, opts, snapshots[0].ID, nil, target); err != nil {
         t.Fatalf("native restore: %v", err)
     }
+    lockCtx, cancel := context.WithCancel(ctx)
+    defer cancel()
+    _, _, release, err := openWithReadLock(lockCtx, opts, false, ui.NewProgressPrinter(opts.JSON, opts.Verbosity, term))
+    if err != nil { t.Fatal(err) }
+    cancel()
+    release()
+    locks, err := os.ReadDir(filepath.Join(repoPath, "locks"))
+    if err != nil || len(locks) != 0 { t.Fatalf("locks after cancellation: %v, %v", locks, err) }
     var restored [][]byte
     err = filepath.WalkDir(restoredPath, func(path string, entry fs.DirEntry, walkErr error) error {
         if walkErr != nil { return walkErr }

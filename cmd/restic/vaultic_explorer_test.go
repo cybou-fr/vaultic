@@ -77,6 +77,7 @@ func TestVaulticSelectiveRestoreRoundTrip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "other.txt"), []byte("not selected"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	linkErr := os.Symlink("other.txt", filepath.Join(source, "linked.txt"))
 	group := filepath.Join(source, "group (docs)")
 	if err := os.Mkdir(group, 0700); err != nil {
 		t.Fatal(err)
@@ -107,6 +108,18 @@ func TestVaulticSelectiveRestoreRoundTrip(t *testing.T) {
 		t.Fatalf("expected 1 snapshot, got %d", len(snapshots))
 	}
 	id := snapshots[0].ID
+	if linkErr == nil {
+		emptyTarget := t.TempDir()
+		if err := vaulticRestoreSnapshot(ctx, opts, id, nil, emptyTarget); err == nil {
+			t.Fatal("accepted a whole-snapshot restore containing a symbolic link")
+		}
+		entries, err := os.ReadDir(emptyTarget)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("preflight modified the destination: %v, %v", entries, err)
+		}
+	} else {
+		t.Logf("symbolic link fixture unavailable: %v", linkErr)
+	}
 	var selected *vaulticSnapshotNode
 	var descend func(string) error
 	descend = func(dir string) error {
