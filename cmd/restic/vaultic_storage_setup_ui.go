@@ -217,7 +217,7 @@ type vaulticStorageSetupUI struct {
 	entries     map[string]fyne.CanvasObject
 	name, pass  *widget.Entry
 	preview     *widget.Label
-	problem     *canvas.Text
+	problem     *widget.Label
 	badge       *canvas.Text
 	detail      *widget.Label
 	busyBar     *widget.ProgressBarInfinite
@@ -241,8 +241,8 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 	u.pass.SetPlaceHolder("Mot de passe de chiffrement restic — jamais enregistré")
 	u.pass.OnChanged = func(string) { u.refresh() }
 	u.preview = vaulticWrappedLabel("")
-	u.problem = canvas.NewText("", color.NRGBA{R: 255, G: 117, B: 136, A: 255})
-	u.problem.TextSize = 12
+	u.problem = vaulticWrappedLabel("")
+	u.problem.Importance = widget.DangerImportance
 	u.badge = vaulticHeading("", 15)
 	u.detail = vaulticWrappedLabel("")
 	u.busyBar = widget.NewProgressBarInfinite()
@@ -298,8 +298,8 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 		u.preview, u.problem,
 		widget.NewSeparator(),
 		state,
-		container.NewHBox(u.testBtn, u.openBtn, u.createBtn, u.saveBtn, u.cancelEditBtn),
-		vaulticCaption("Les identifiants cloud restent en mémoire pour cette session. Le mot de passe restic n'est jamais enregistré."),
+		container.NewGridWrap(fyne.NewSize(215, 40), u.testBtn, u.openBtn, u.createBtn, u.saveBtn, u.cancelEditBtn),
+		vaulticWrappedLabel("Les identifiants cloud restent en mémoire pour cette session. Le mot de passe restic n'est jamais enregistré."),
 	))
 	u.SetState(vaulticProbeResult{State: vaulticConnNotTested})
 	u.SetScheme(vaulticBackendCatalog[0].Scheme)
@@ -445,12 +445,11 @@ func (u *vaulticStorageSetupUI) refresh() {
 	setup, err := u.build(vaulticActionTest)
 	if err != nil {
 		u.preview.SetText("")
-		u.problem.Text = err.Error()
+		u.problem.SetText(err.Error())
 	} else {
 		u.preview.SetText("Adresse : " + vaulticSafeLocation(setup.Address))
-		u.problem.Text = ""
+		u.problem.SetText("")
 	}
-	u.problem.Refresh()
 	u.updateButtons()
 }
 
@@ -484,8 +483,7 @@ func (u *vaulticStorageSetupUI) updateButtons() {
 func (u *vaulticStorageSetupUI) submit(action string) {
 	setup, err := u.build(action)
 	if err != nil {
-		u.problem.Text = err.Error()
-		u.problem.Refresh()
+		u.problem.SetText(err.Error())
 		return
 	}
 	if u.hooks.Submit != nil {

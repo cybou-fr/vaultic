@@ -1219,7 +1219,7 @@ func vaulticMain() {
         cloudAuthEditorButton,
         clearCloudAuthButton,
     ))
-    repositoriesPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
+    repositoriesPage:=container.NewScroll(container.NewPadded(container.NewVBox(
         vaulticHeading("Dépôts",26),
         savedRepositories,
         activeConfiguration,

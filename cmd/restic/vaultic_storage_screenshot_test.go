@@ -52,6 +52,10 @@ func TestVaulticCaptureStorageScreens(t *testing.T) {
 	bad.SetState(vaulticProbeResult{State: vaulticConnAuthFailed, Detail: "Le stockage a refusé les identifiants (clés cloud, SSH ou serveur)."})
 	capture("storage-gcs-invalid.png", container.NewVScroll(container.NewPadded(bad.Content)), fyne.NewSize(1000, 960))
 
+	narrow := vaulticNewStorageSetupUI(vaulticStorageSetupHooks{})
+	narrow.SetScheme("s3")
+	capture("storage-s3-narrow.png", container.NewVScroll(container.NewPadded(narrow.Content)), fyne.NewSize(560, 1100))
+
 	hooks := vaulticRepositoryHooks{Connect: func(vaulticDepot) {}, Edit: func(vaulticDepot) {}, Test: func(vaulticDepot) {}, Forget: func(vaulticDepot) {}}
 	r1, _ := vaulticRepositoryRow(vaulticDepot{Name: "Disque externe", Location: `D:\Sauvegardes\vaultic`, LastVerified: "2026-11-20T13:03:00Z", LastVerifiedState: "connected"}, true, hooks)
 	r2, _ := vaulticRepositoryRow(vaulticDepot{Name: "Serveur du bureau", Location: "sftp://vaultic:pw@backup.example.org:2222//srv/vaultic", LastVerified: "2026-11-19T08:30:00Z", LastVerifiedState: "auth_failed"}, false, hooks)

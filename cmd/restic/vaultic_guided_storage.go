@@ -261,7 +261,7 @@ const (
 )
 
 func vaulticStorageFields(scheme string) []vaulticStorageField {
-	prefix := vaulticStorageField{Key: "prefix", Label: "Dossier dans le stockage", Placeholder: "vaultic", Default: "vaultic", Help: "Sous-dossier du dépôt. Laissez vide pour la racine."}
+	prefix := vaulticStorageField{Key: "prefix", Label: "Sous-dossier", Placeholder: "vaultic", Default: "vaultic", Help: "Sous-dossier du dépôt. Laissez vide pour la racine."}
 	switch scheme {
 	case "local":
 		return []vaulticStorageField{{Key: "path", Label: "Dossier du dépôt", Placeholder: "D:\\Sauvegardes\\vaultic", Required: true, Browse: true}}
@@ -290,7 +290,7 @@ func vaulticStorageFields(scheme string) []vaulticStorageField {
 	case "rclone":
 		return []vaulticStorageField{
 			{Key: "remote", Label: "Remote rclone", Placeholder: "cloud", Required: true, Help: "Nom d'un remote déjà configuré avec rclone config."},
-			{Key: "prefix", Label: "Dossier dans le remote", Placeholder: "vaultic", Default: "vaultic"},
+			{Key: "prefix", Label: "Sous-dossier", Placeholder: "vaultic", Default: "vaultic"},
 		}
 	case "s3":
 		return []vaulticStorageField{
