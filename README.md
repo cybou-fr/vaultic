@@ -59,6 +59,18 @@ L'interface de bureau Fyne utilise une palette nuit bleu profond avec un accent 
 
 Les données de tableau de bord restent volontairement neutres lorsqu'aucun instantané n'a été chargé : **Vaultic n'affiche jamais « protégé » sur la base d'informations inventées**. Le design est appliqué directement dans `cmd/restic/vaultic_ui_style.go`, `vaultic_ui_brand.go` et `vaultic_gui.go` : aucun framework web ni programme externe n'est nécessaire.
 
+## Fonctions disponibles pour les profils et le stockage
+
+### Exclusions par profil
+
+Dans **Sauvegarde → Exclusions…**, définissez les motifs d'exclusion restic pour le profil sélectionné, un par ligne (par exemple `**/node_modules`, `**/.cache`, `*.tmp`). Les lignes vides et les commentaires commençant par `#` sont ignorés. Les motifs sont vérifiés avant d'être enregistrés et transmis **directement à la fonction Go de sauvegarde restic**. Aucun shell n'est lancé.
+
+Chaque profil possède ses propres exclusions persistées dans les préférences locales. Il ne s'agit pas d'un aperçu de fichiers réellement exclus : le moteur applique les motifs lors du backup.
+
+### Stockage
+
+L'écran **Stockage** déclenche manuellement l'opération native `stats` du moteur restic en mode `raw-data`. Il indique le nombre d'instantanés analysés, le nombre de blobs référencés et leur volume. **Ce volume n'est pas l'occupation complète du disque** : il exclut notamment les métadonnées et les données non référencées. Le calcul peut être interrompu et n'effectue pas de suppression.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.

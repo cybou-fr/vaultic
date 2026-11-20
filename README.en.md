@@ -30,6 +30,12 @@ The native Fyne UI now uses a midnight-blue theme, muted aqua accent, vector app
 
 Dashboard figures are derived from current in-app data. When snapshots have not yet been loaded, their count is shown as unknown rather than implying the backups are verified. All restic operations remain in-process.
 
+## Profile exclusions and storage statistics
+
+**Backup → Exclusions…** lets you configure native restic exclude patterns for each individual backup profile, one rule per line (e.g. `**/node_modules` or `*.tmp`). The editor validates patterns and saves them with the profile. They are passed directly to the embedded Go restic engine, not a CLI subprocess.
+
+The **Storage** page runs restic's in-process `stats` in `raw-data` mode on demand. It shows referenced blob size, referenced blob count, and snapshots analyzed. These figures are **not total on-disk repository usage**: metadata, unreferenced data and free space are excluded. The operation is cancellable.
+
 ## Manual tests
 
 ```bash

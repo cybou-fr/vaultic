@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+    "encoding/json"
+    "testing"
+)
 
 func TestVaulticMigrateDepots(t *testing.T) {
 	settings := vaulticSettings{Repository: "local:depot", Sources: []string{"documents"}}
@@ -40,4 +43,22 @@ func TestVaulticMigrateBackupProfiles(t *testing.T) {
 	if index := settings.migrateBackupProfiles(); index != 1 || settings.Profiles[index].Sources[0] != "images" {
 		t.Fatalf("saved profile was not selected: %+v", settings)
 	}
+}
+
+func TestVaulticProfileExclusionsSurviveJSONSerialization(t *testing.T) {
+    input:=vaulticSettings{
+        Profiles:[]vaulticBackupProfile{{
+            Name:"Documents",
+            Sources:[]string{"documents"},
+            Excludes:[]string{"**/node_modules","*.tmp"},
+        }},
+    }
+    data,err:=json.Marshal(input)
+    if err!=nil{t.Fatal(err)}
+    var decoded vaulticSettings
+    if err:=json.Unmarshal(data,&decoded);err!=nil{t.Fatal(err)}
+    if len(decoded.Profiles)!=1 || len(decoded.Profiles[0].Excludes)!=2 ||
+        decoded.Profiles[0].Excludes[0]!="**/node_modules"{
+        t.Fatalf("règles perdues : %+v", decoded.Profiles)
+    }
 }

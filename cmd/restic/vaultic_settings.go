@@ -27,8 +27,9 @@ type vaulticSettings struct {
 }
 
 type vaulticBackupProfile struct {
-	Name    string   `json:"name"`
-	Sources []string `json:"sources"`
+	Name     string   `json:"name"`
+	Sources  []string `json:"sources"`
+	Excludes []string `json:"excludes,omitempty"`
 }
 
 func (s *vaulticSettings) migrateBackupProfiles() int {

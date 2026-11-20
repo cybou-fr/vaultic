@@ -166,6 +166,10 @@ func vaulticMain() {
     recentRunValue.Truncation=fyne.TextTruncateEllipsis
     recentSnapshotValue:=widget.NewLabel("Aucun instantané consulté")
     recentSnapshotValue.Wrapping=fyne.TextWrapWord
+    storageVolume:=vaulticHeading("—",24)
+    storageBlobs:=vaulticHeading("—",24)
+    storageSnapshots:=vaulticHeading("—",24)
+    storageUpdated:=vaulticWrappedLabel("Aucune analyse effectuée pour ce dépôt.")
 
     activeRepository := saved.Repository
     repoEntry := widget.NewEntry()
@@ -214,7 +218,9 @@ func vaulticMain() {
             for j, source := range profile.Sources {
                 storedSources[j] = vaulticPortablePath(source)
             }
-            profiles[i] = vaulticBackupProfile{Name: profile.Name, Sources: storedSources}
+            profiles[i] = vaulticBackupProfile{
+                Name:profile.Name, Sources:storedSources, Excludes:append([]string(nil),profile.Excludes...),
+            }
         }
         return vaulticSaveSettings(vaulticSettings{
             Repository: active, Depots: depots, Sources: profiles[profileIndex].Sources,
@@ -531,12 +537,18 @@ func vaulticMain() {
         updateSources(next)
     })
     profileSelect := widget.NewSelect(nil, nil)
+    exclusionSummary:=widget.NewLabel("Aucune exclusion")
     refreshProfiles := func() {
         names := make([]string, len(saved.Profiles))
         for i, profile := range saved.Profiles { names[i] = profile.Name }
         profileSelect.SetOptions(names)
         if profileSelect.Selected != names[profileIndex] {
             profileSelect.SetSelected(names[profileIndex])
+        }
+        if count:=len(saved.Profiles[profileIndex].Excludes);count>0 {
+            exclusionSummary.SetText(fmt.Sprintf("%d exclusion(s)",count))
+        }else{
+            exclusionSummary.SetText("Aucune exclusion")
         }
     }
     applyProfiles := func(next []vaulticBackupProfile, index int) bool {
@@ -600,8 +612,32 @@ func vaulticMain() {
     }
     newProfileButton := widget.NewButton("Nouveau…", func(){editProfile(true)})
     renameProfileButton := widget.NewButton("Renommer…", func(){editProfile(false)})
+    exclusionsButton:=widget.NewButtonWithIcon("Exclusions…",theme.ContentRemoveIcon(),func(){
+        targetProfile:=profileIndex
+        editor:=widget.NewMultiLineEntry()
+        editor.SetMinRowsVisible(10)
+        editor.Wrapping=fyne.TextWrapWord
+        editor.SetPlaceHolder("**/node_modules\n**/.cache\n*.tmp")
+        editor.SetText(strings.Join(saved.Profiles[targetProfile].Excludes,"\n"))
+        explanation:=vaulticWrappedLabel("Une règle restic par ligne. Les lignes vides ou commençant par # sont ignorées. Des exceptions peuvent commencer par !. Les exclusions ne concernent que ce profil.")
+        content:=container.NewBorder(explanation,nil,nil,nil,container.NewVScroll(editor))
+        content.SetMinSize(fyne.NewSize(500,290))
+        dialog.NewCustomConfirm("Exclusions du profil","Enregistrer","Annuler",content,func(ok bool){
+            if !ok{return}
+            if targetProfile!=profileIndex{
+                dialog.ShowInformation("Profil modifié","Sélectionnez à nouveau le profil avant de modifier ses exclusions.",w)
+                return
+            }
+            rules,err:=vaulticParseExclusions(editor.Text)
+            if err!=nil{dialog.ShowError(err,w);return}
+            next:=append([]vaulticBackupProfile(nil),saved.Profiles...)
+            next[targetProfile].Excludes=rules
+            applyProfiles(next,targetProfile)
+        },w).Show()
+    })
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         selected := append([]string(nil), sources...)
+        selectedExcludes:=append([]string(nil),saved.Profiles[profileIndex].Excludes...)
         report := &vaulticBackupReport{started: time.Now(), profile: saved.Profiles[profileIndex].Name}
         runWithDepot("Sauvegarde", activeRepository, passEntry.Text, false, func(ctx context.Context,g global.Options)error{
             clean, err := vaulticSourcesForBackup(g.Repo, selected)
@@ -609,6 +645,7 @@ func vaulticMain() {
             if err := ctx.Err(); err != nil { return err }
             host, _ := os.Hostname()
             opts:= BackupOptions{Host:host,GroupBy:data.SnapshotGroupByOptions{Host:true,Path:true}}
+            opts.Excludes=selectedExcludes
             err = runBackup(ctx,opts,g,g.Term,clean)
             // restic can format the underlying context error as plain text.
             if err != nil && ctx.Err() != nil && !errors.Is(err, ErrInvalidSourceData) {
@@ -729,8 +766,25 @@ func vaulticMain() {
             return err
         })
     })
+    storageButton:=widget.NewButtonWithIcon("Analyser le stockage",theme.SearchIcon(),func(){
+        run("Analyse du stockage",func(ctx context.Context,g global.Options)error{
+            metrics,err:=vaulticCollectStorageStatistics(ctx,g)
+            if err!=nil{return err}
+            fyne.Do(func(){
+                if ctx.Err()!=nil{return}
+                storageVolume.Text=vaulticBytes(metrics.TotalSize)
+                storageVolume.Refresh()
+                storageBlobs.Text=fmt.Sprintf("%d",metrics.TotalBlobCount)
+                storageBlobs.Refresh()
+                storageSnapshots.Text=fmt.Sprintf("%d",metrics.SnapshotsCount)
+                storageSnapshots.Refresh()
+                storageUpdated.SetText("Dernière analyse : "+time.Now().Format("02/01/2006 à 15:04"))
+            })
+            return nil
+        })
+    })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton,newProfileButton,renameProfileButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton,storageButton,newProfileButton,renameProfileButton,exclusionsButton}
     updateActions = func() {
         if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
         if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
@@ -741,6 +795,8 @@ func vaulticMain() {
         }
         vaulticSetButtonEnabled(backupButton, !busy.Load() && len(sources) > 0)
         vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
+        vaulticSetButtonEnabled(exclusionsButton,!busy.Load())
+        vaulticSetButtonEnabled(storageButton,!busy.Load() && activeRepository!="")
         vaulticSetButtonEnabled(removeSource, !busy.Load() && selectedSource >= 0)
         canRestore := !busy.Load() && selectedSnapshot >= 0
         vaulticSetButtonEnabled(explorerButton, canRestore)
@@ -764,6 +820,13 @@ func vaulticMain() {
         snapshotCountValue.Text = "—"
         snapshotCountValue.Refresh()
         recentSnapshotValue.SetText("Aucun instantané consulté")
+        storageVolume.Text="—"
+        storageVolume.Refresh()
+        storageBlobs.Text="—"
+        storageBlobs.Refresh()
+        storageSnapshots.Text="—"
+        storageSnapshots.Refresh()
+        storageUpdated.SetText("Aucune analyse effectuée pour ce dépôt.")
     }
     refreshDepots = func() {
         names := make([]string, 0, len(saved.Depots))
@@ -840,6 +903,7 @@ func vaulticMain() {
             vaulticHeading("Sauvegarde", 26),
             widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil,nil,nil,
                 container.NewHBox(newProfileButton, renameProfileButton), profileSelect))),
+            container.NewHBox(exclusionsButton,exclusionSummary),
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(
             vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
@@ -860,6 +924,20 @@ func vaulticMain() {
         nil,nil,
         container.NewPadded(vaulticSurface(container.NewStack(snapshotList,snapshotEmpty))),
     )
+    storagePage:=container.NewVScroll(container.NewPadded(container.NewVBox(
+        vaulticPageHeading("Stockage","Mesurez les données réellement référencées par les instantanés."),
+        vaulticSurface(container.NewVBox(
+            vaulticWrappedLabel("Cette analyse lit les métadonnées du dépôt. Elle peut prendre du temps sur les dépôts volumineux et peut être annulée."),
+            storageButton,
+            storageUpdated,
+        )),
+        container.NewGridWithColumns(2,
+            vaulticStatCard("VOLUME DES BLOBS",storageVolume),
+            vaulticStatCard("BLOBS RÉFÉRENCÉS",storageBlobs),
+        ),
+        vaulticStatCard("INSTANTANÉS ANALYSÉS",storageSnapshots),
+        vaulticSurface(vaulticWrappedLabel("Mesure restic raw-data : taille des blocs référencés, hors métadonnées du dépôt, fichiers non référencés et espace disque libre. Ce n'est pas la taille physique complète du dépôt.")),
+    )))
     checkDescription:=widget.NewLabel("La vérification contrôle la structure du dépôt. Elle ne supprime pas vos sauvegardes.")
     checkDescription.Wrapping=fyne.TextWrapWord
     checkPage:=container.NewVScroll(container.NewPadded(container.NewVBox(
@@ -889,7 +967,7 @@ func vaulticMain() {
         )),
     )))
 
-    pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,checkPage,journalPage,settingsPage}
+    pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,storagePage,checkPage,journalPage,settingsPage}
     mainPage:=container.NewStack(overviewPage)
     var navButtons []*widget.Button
     navigate:=func(index int){
@@ -901,8 +979,8 @@ func vaulticMain() {
             b.Refresh()
         }
     }
-    navLabels:=[]string{"Vue d'ensemble","Sauvegarde","Instantanés","Intégrité","Activité","Paramètres"}
-    navIcons:=[]fyne.Resource{theme.HomeIcon(),theme.StorageIcon(),theme.HistoryIcon(),theme.ConfirmIcon(),theme.ListIcon(),theme.SettingsIcon()}
+    navLabels:=[]string{"Vue d'ensemble","Sauvegarde","Instantanés","Stockage","Intégrité","Activité","Paramètres"}
+    navIcons:=[]fyne.Resource{theme.HomeIcon(),theme.StorageIcon(),theme.HistoryIcon(),theme.StorageIcon(),theme.ConfirmIcon(),theme.ListIcon(),theme.SettingsIcon()}
     for i:=range navLabels{
         index:=i
         button:=widget.NewButtonWithIcon(navLabels[i],navIcons[i],func(){navigate(index)})
@@ -910,7 +988,7 @@ func vaulticMain() {
         button.Importance=widget.LowImportance
         navButtons=append(navButtons,button)
     }
-    setupButton.OnTapped=func(){navigate(5)}
+    setupButton.OnTapped=func(){navigate(6)}
     startBackup.OnTapped=func(){navigate(1)}
     viewSnapshots.OnTapped=func(){navigate(2)}
     sidebarBg:=canvas.NewRectangle(vaulticSidebar)
@@ -918,7 +996,7 @@ func vaulticMain() {
     sidebar:=container.NewStack(sidebarBg,container.NewPadded(container.NewBorder(
         container.NewVBox(brand,widget.NewSeparator()), nil,
         nil,nil,
-        container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4),navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5])),
+        container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4),navButtons[0],navButtons[1],navButtons[2],navButtons[3],navButtons[4],navButtons[5],navButtons[6])),
     )))
     statusTitle:=widget.NewLabelWithStyle("ÉTAT",fyne.TextAlignLeading,fyne.TextStyle{Bold:true})
     statusBar:=container.NewVBox(
@@ -926,7 +1004,7 @@ func vaulticMain() {
         progressSlot,
         container.NewBorder(nil,nil,statusTitle,cancelButton,status),
     )
-    if activeRepository == "" { navigate(5) } else { navigate(0) }
+    if activeRepository == "" { navigate(6) } else { navigate(0) }
     windowContent = container.NewBorder(nil,container.NewPadded(statusBar),sidebar,nil,mainPage)
     refreshDepots()
     refreshProfiles()
