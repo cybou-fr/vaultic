@@ -18,7 +18,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -229,31 +228,17 @@ func vaulticMain() {
 	passEntry := widget.NewPasswordEntry()
 	passEntry.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré")
 
-	status := widget.NewLabel("Prêt")
-	status.Wrapping = fyne.TextWrapWord
-	progress := widget.NewProgressBar()
-	progress.Hide()
-	progressPlaceholder := canvas.NewRectangle(vaulticBackground)
-	progressPlaceholder.SetMinSize(fyne.NewSize(0, progress.MinSize().Height))
-	progressPlaceholder.Hide()
-	progressSlot := container.NewStack(progressPlaceholder, progress)
-	progressSlot.Hide()
-	logs := widget.NewMultiLineEntry()
-	logs.SetMinRowsVisible(4)
-	logs.SetPlaceHolder("Aucun événement dans cette session.")
-	logs.Wrapping = fyne.TextWrapWord
-	logs.Disable()
-	var logText string
-	appendLog := func(msg string) {
-		if strings.TrimSpace(msg) == "" {
-			return
+	var cancelOp context.CancelFunc
+	var panel *vaulticStatusPanel
+	panel = newVaulticStatusPanel(func() {
+		if cancelOp != nil {
+			cancelOp()
+			panel.Status.SetText("Annulation…")
 		}
-		logText += time.Now().Format("15:04:05") + "  " + msg + "\n"
-		if len(logText) > 16000 {
-			logText = logText[len(logText)-12000:]
-		}
-		logs.SetText(logText)
-	}
+	})
+	status := panel.Status
+	logView := newVaulticLogView()
+	appendLog := logView.Append
 	persist := func(depots []vaulticDepot, active string) error {
 		if settingsErr != nil {
 			return settingsErr
@@ -298,7 +283,6 @@ func vaulticMain() {
 	}
 	stopScheduler := make(chan struct{})
 	var stopSchedulerOnce sync.Once
-	var cancelOp context.CancelFunc
 	closing := false
 	closePrompt := false
 	var stopFocusFollow func()
@@ -330,23 +314,12 @@ func vaulticMain() {
 		reportDialog.Resize(fyne.NewSize(490, 300))
 		reportDialog.Show()
 	}
-	cancelButton := widget.NewButton("Arrêter", func() {
-		if cancelOp != nil {
-			cancelOp()
-			status.SetText("Annulation…")
-		}
-	})
-	cancelButton.Hide()
 	setBusy := func(on bool) {
 		if on {
-			cancelButton.Enable()
-			cancelButton.Show()
+			panel.Busy()
 			passEntry.Disable()
 		} else {
-			cancelButton.Hide()
-			progress.Hide()
-			progressPlaceholder.Hide()
-			progressSlot.Hide()
+			panel.Idle()
 			passEntry.Enable()
 		}
 		if setupUI != nil {
@@ -374,53 +347,25 @@ func vaulticMain() {
 			if report != nil {
 				report.record(e)
 			}
-			switch e.MessageType {
-			case "status":
+			view := vaulticInterpretEvent(e, title, report != nil)
+			if view.HasProgress || view.Status != "" {
 				fyne.Do(func() {
 					if ctx.Err() != nil {
 						return
 					}
-					if e.TotalBytes > 0 && e.PercentDone >= 0 && e.PercentDone <= 1 {
-						progress.SetValue(e.PercentDone)
-						if !progress.Visible() {
-							progress.Show()
-							progressSlot.Show()
-							windowContent.Refresh()
-						}
+					if view.HasProgress && panel.SetProgress(view.Progress) {
+						windowContent.Refresh()
 					}
-					if report != nil {
-						files := fmt.Sprintf("%d fichiers", e.FilesDone)
-						if e.TotalFiles > 0 {
-							files = fmt.Sprintf("%d / %d fichiers", e.FilesDone, e.TotalFiles)
-						}
-						metrics := files + " · " + vaulticBytes(e.BytesDone)
-						if e.TotalBytes > 0 {
-							metrics += " / " + vaulticBytes(e.TotalBytes)
-						}
-						if e.SecondsElapsed > 0 {
-							metrics += " · " + vaulticBytes(e.BytesDone/e.SecondsElapsed) + "/s"
-						}
-						status.SetText(metrics)
-					} else if e.TotalFiles > 0 {
-						status.SetText(fmt.Sprintf("%s en cours · %d / %d fichiers", title, e.FilesDone+e.FilesRestored, e.TotalFiles))
+					if view.Status != "" {
+						status.SetText(view.Status)
 					}
 				})
+			}
+			if view.Suppress {
 				return
-			case "summary":
-				if report != nil {
-					return
-				}
-				if e.SnapshotID != "" {
-					line = fmt.Sprintf("Instantané %s · %d fichier(s) traité(s), %d octets", e.SnapshotID, e.FilesProcessed, e.BytesProcessed)
-				} else if e.TotalFiles > 0 {
-					line = fmt.Sprintf("%d élément(s) restauré(s) sur %d · %d octets", e.FilesRestored, e.TotalFiles, e.BytesRestored)
-				} else {
-					return
-				}
-			case "error":
-				if e.Error.Message != "" {
-					line = e.Error.Message
-				}
+			}
+			if view.Log != "" {
+				line = view.Log
 			}
 		}
 		line = redact(line)
@@ -441,11 +386,10 @@ func vaulticMain() {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelOp = cancel
 		if report != nil {
-			progressPlaceholder.Show()
-			progressSlot.Show()
+			panel.Reserve()
 		}
 		setBusy(true)
-		progress.SetValue(0)
+		panel.Progress.SetValue(0)
 		status.SetText(title + "…")
 		appendLog("Début : " + title)
 		cloudAuth := cloudSessions.get(repo)
@@ -884,10 +828,9 @@ func vaulticMain() {
 			title = "Sauvegarde planifiée"
 		}
 		cancelOp = coord.Cancel
-		progressPlaceholder.Show()
-		progressSlot.Show()
+		panel.Reserve()
 		setBusy(true)
-		progress.SetValue(0)
+		panel.Progress.SetValue(0)
 		status.SetText(title + "…")
 		appendLog("Début : " + title + " — profil « " + profileName + " »")
 		gopts := global.Options{
@@ -1219,7 +1162,7 @@ func vaulticMain() {
 		Volume: storageVolume, Blobs: storageBlobs, Snapshots: storageSnapshots,
 	})
 	checkPage := vaulticIntegrityPage(checkButton)
-	journalPage := vaulticActivityPage(logs, func() { logText = ""; logs.SetText("") })
+	journalPage := vaulticActivityPage(logView.Entry, logView.Clear)
 	settingsPage := vaulticSettingsPage()
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
@@ -1230,7 +1173,7 @@ func vaulticMain() {
 	startBackup.OnTapped = func() { navigate(vaulticPageBackup) }
 	viewSnapshots.OnTapped = func() { navigate(vaulticPageSnapshots) }
 	viewStorage.OnTapped = func() { navigate(vaulticPageStorage) }
-	statusBar := vaulticStatusBar(progressSlot, status, cancelButton)
+	statusBar := panel.Bar()
 	if activeRepository == "" {
 		navigate(vaulticPageRepositories)
 	} else {
