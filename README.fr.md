@@ -114,6 +114,22 @@ Le sélecteur **Paramètres → Ajouter un dépôt → Type** présente les **ne
 
 La page **Instantanés** affiche maintenant une chronologie avec un marqueur de nouveau jour et des détails de taille quand ils ont été calculés. Depuis la comparaison **Avant / Après**, sélectionnez une ligne et choisissez **Ouvrir pour restaurer…** : Vaultic ouvre l'instantané approprié (avant pour les fichiers supprimés, après pour les ajouts ou modifications), dans son explorateur, avec le chemin déjà sélectionné lorsque le type de fichier est restaurable. Il faut encore **choisir un dossier de destination vide et confirmer** la restauration ; aucun fichier n'est remplacé automatiquement.
 
+## Assistants cloud : S3, B2 et Azure
+
+Dans **Paramètres → Ajouter un dépôt**, sélectionnez S3/MinIO, Backblaze B2 ou Azure Blob et cliquez **Assistant cloud…**.
+
+Le formulaire guide le choix d'un nom, du bucket/conteneur existant, du chemin et du mot de passe de chiffrement restic. Il accepte aussi, si nécessaire :
+
+- **S3/MinIO** : endpoint HTTPS (hôte sans identifiants), région, Access Key ID et Secret Access Key.
+- **B2** : bucket, Account ID/Key ID et Application Key.
+- **Azure** : compte, conteneur, clé de compte ou jeton SAS.
+
+Les boutons **Tester et ouvrir** et **Créer un dépôt** utilisent les fonctions Go du moteur restic intégré : le premier vérifie l'accès à un dépôt restic **déjà existant**, le second **initialise un dépôt restic** dans un bucket ou conteneur que vous avez préalablement créé et autorisé. Un compte cloud ne sera pas créé automatiquement. Une connexion réseau, les autorisations et des identifiants corrects restent nécessaires.
+
+**Sécurité :** la clé d'accès cloud n'est jamais intégrée à l'URL du dépôt, n'est pas écrite dans `vaultic.json`, n'est pas passée dans une commande CLI et n'est pas placée dans l'environnement global du processus. Elle reste dans la mémoire de Vaultic pour la durée de la session. Après redémarrage, utilisez **Configurer l'accès cloud du dépôt…** pour saisir à nouveau les clés du dépôt enregistré, ou comptez sur les identifiants cloud configurés dans l'environnement système. **Effacer les clés cloud de la session** retire immédiatement les clés mémorisées pour le dépôt actif. Le mot de passe de chiffrement restic reste distinct et n'est pas enregistré.
+
+Seuls S3, B2 et Azure disposent actuellement d'un formulaire cloud guidé ; les six autres backends restent accessibles par leur adresse restic et leur authentification native. Les connexions réelles à des comptes distants doivent être vérifiées manuellement avant un usage de production.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.

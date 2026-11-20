@@ -68,6 +68,16 @@ The **Snapshots** page groups entries by day on a visual timeline. Size and file
 
 From the **Before / After** comparison window, select a changed path and click **Ouvrir pour restaurer…** to open the appropriate snapshot in the file explorer. Removed files open the *Before* snapshot; additions and modifications open the *After* snapshot. The file is preselected when its type permits restoration. The user must still choose an empty destination and confirm the restore. Existing files are never deliberately overwritten.
 
+## Guided cloud connection: S3, B2 and Azure
+
+In **Settings → Add repository**, select S3/MinIO, Backblaze B2 or Azure Blob and open **Assistant cloud…**. The guided form covers bucket/container, optional path prefix, repository encryption password, and provider credentials when needed. S3 supports a TLS endpoint and optional region; B2 supports Account ID/Application Key; Azure supports an account key or SAS token.
+
+**Test and open** verifies an existing restic repository using the embedded Go engine. **Create repository** initializes a new restic repository inside a pre-existing and accessible bucket/container; it does not create a provider account or bucket.
+
+Cloud keys are **session-only**: they are passed to a per-operation backend factory, never placed into repository URLs, `vaultic.json`, a global process environment variable, or an external restic subprocess. After restart, use **Configure cloud access for active repository** to re-enter credentials, or use already-configured system authentication. You can clear session cloud credentials for the active repository at any time. The restic encryption password is always separate and is not saved.
+
+These three backends have guided forms; the other registered backends continue to use their native restic addresses and provider/system authentication. Network connectivity and production verification are still required.
+
 ## Manual tests
 
 ```bash
