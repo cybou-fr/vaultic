@@ -479,6 +479,45 @@ func vaulticMain() {
     verifyButton := widget.NewButton("Vérifier la connexion", func() {
         run("Vérification de la connexion", vaulticVerifyDepot)
     })
+    renameDepotButton:=widget.NewButtonWithIcon("Renommer…",theme.DocumentCreateIcon(),func(){
+        if activeRepository==""{return}
+        currentName:=""
+        for _,depot:=range saved.Depots{
+            if depot.Location==activeRepository{currentName=depot.Name;break}
+        }
+        if currentName==""{return}
+        field:=widget.NewEntry()
+        field.SetText(currentName)
+        dialog.NewForm("Renommer le dépôt","Enregistrer","Annuler",[]*widget.FormItem{
+            widget.NewFormItem("Nom affiché",field),
+        },func(ok bool){
+            if !ok || busy.Load(){return}
+            updated,err:=vaulticRenameSavedDepot(saved.Depots,activeRepository,field.Text)
+            if err!=nil{dialog.ShowError(err,w);return}
+            if err:=persist(updated,activeRepository);err!=nil{dialog.ShowError(err,w);return}
+            saved.Depots=updated
+            refreshDepots()
+            appendLog("Nom du dépôt modifié (données du dépôt inchangées).")
+        },w).Show()
+        w.Canvas().Focus(field)
+    })
+    forgetDepotButton:=widget.NewButtonWithIcon("Retirer de Vaultic…",theme.DeleteIcon(),func(){
+        if activeRepository==""{return}
+        location:=activeRepository
+        name:=depotSelect.Selected
+        dialog.ShowConfirm("Retirer le dépôt",
+            "Retirer « "+name+" » de la liste Vaultic ?\n\nAucun fichier de sauvegarde ni instantané ne sera supprimé. Vous pourrez reconnecter le dépôt plus tard.",
+            func(ok bool){
+                if !ok || busy.Load() || activeRepository!=location{return}
+                next,active,err:=vaulticForgetSavedDepot(saved.Depots,activeRepository,location)
+                if err!=nil{dialog.ShowError(err,w);return}
+                if err:=persist(next,active);err!=nil{dialog.ShowError(err,w);return}
+                saved.Depots=next
+                activateDepot(active,"")
+                refreshDepots()
+                appendLog("Dépôt retiré de la liste Vaultic : "+name+" (sauvegardes non supprimées).")
+            },w)
+    })
 
     sourcesEmpty := vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
     sourcesList := widget.NewList(
@@ -612,6 +651,37 @@ func vaulticMain() {
     }
     newProfileButton := widget.NewButton("Nouveau…", func(){editProfile(true)})
     renameProfileButton := widget.NewButton("Renommer…", func(){editProfile(false)})
+    duplicateProfileButton:=widget.NewButtonWithIcon("Dupliquer…",theme.ContentCopyIcon(),func(){
+        from:=profileIndex
+        field:=widget.NewEntry()
+        field.SetText(vaulticSuggestedCopyName(saved.Profiles,from))
+        dialog.NewForm("Dupliquer le profil","Dupliquer","Annuler",[]*widget.FormItem{
+            widget.NewFormItem("Nom de la copie",field),
+        },func(ok bool){
+            if !ok || busy.Load() || from!=profileIndex{return}
+            updated,index,err:=vaulticDuplicateSavedProfile(saved.Profiles,from,field.Text)
+            if err!=nil{dialog.ShowError(err,w);return}
+            if applyProfiles(updated,index){
+                appendLog("Profil dupliqué (sources et exclusions copiées).")
+            }
+        },w).Show()
+        w.Canvas().Focus(field)
+    })
+    deleteProfileButton:=widget.NewButtonWithIcon("Supprimer le profil…",theme.DeleteIcon(),func(){
+        if len(saved.Profiles)<=1{return}
+        target:=profileIndex
+        name:=saved.Profiles[target].Name
+        dialog.ShowConfirm("Supprimer le profil",
+            "Supprimer uniquement le profil « "+name+" » de Vaultic ?\n\nLes dépôts restic et les sauvegardes existantes ne seront pas modifiés.",
+            func(ok bool){
+                if !ok || busy.Load() || target!=profileIndex{return}
+                updated,index,err:=vaulticDeleteSavedProfile(saved.Profiles,target)
+                if err!=nil{dialog.ShowError(err,w);return}
+                if applyProfiles(updated,index){
+                    appendLog("Profil supprimé de la configuration : "+name+" (snapshots inchangés).")
+                }
+            },w)
+    })
     exclusionsButton:=widget.NewButtonWithIcon("Exclusions…",theme.ContentRemoveIcon(),func(){
         targetProfile:=profileIndex
         editor:=widget.NewMultiLineEntry()
@@ -634,6 +704,35 @@ func vaulticMain() {
             next[targetProfile].Excludes=rules
             applyProfiles(next,targetProfile)
         },w).Show()
+    })
+    previewExclusionsButton:=widget.NewButtonWithIcon("Aperçu des exclusions…",theme.SearchIcon(),func(){
+        if len(sources)==0{
+            dialog.ShowInformation("Sources manquantes","Ajoutez d'abord un dossier ou un fichier au profil.",w)
+            return
+        }
+        rules:=append([]string(nil),saved.Profiles[profileIndex].Excludes...)
+        if len(rules)==0{
+            dialog.ShowInformation("Aucune exclusion","Ajoutez des règles d'exclusion pour ce profil avant de lancer un aperçu.",w)
+            return
+        }
+        selected:=append([]string(nil),sources...)
+        var result vaulticExclusionPreview
+        runWithDepot("Aperçu des exclusions",activeRepository,passEntry.Text,false,
+            func(ctx context.Context,g global.Options)error{
+                cleaned,err:=vaulticSourcesForBackup(g.Repo,selected)
+                if err!=nil{return err}
+                result,err=vaulticPreviewExcludedPaths(ctx,cleaned,rules)
+                return err
+            },
+            func()error{
+                details:=vaulticWrappedLabel(vaulticFormatExclusionPreview(result))
+                content:=container.NewVScroll(details)
+                content.SetMinSize(fyne.NewSize(560,340))
+                dlg:=dialog.NewCustom("Aperçu indicatif des exclusions","Fermer",content,w)
+                dlg.Resize(fyne.NewSize(640,440))
+                dlg.Show()
+                return nil
+            },nil)
     })
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         selected := append([]string(nil), sources...)
@@ -784,7 +883,7 @@ func vaulticMain() {
         })
     })
 
-    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,addFolder,addFile,refreshButton,checkButton,storageButton,newProfileButton,renameProfileButton,exclusionsButton}
+    actionButtons=[]*widget.Button{browseRepo,initButton,connectButton,verifyButton,renameDepotButton,forgetDepotButton,addFolder,addFile,refreshButton,checkButton,storageButton,newProfileButton,renameProfileButton,duplicateProfileButton,deleteProfileButton,exclusionsButton,previewExclusionsButton}
     updateActions = func() {
         if len(sources) == 0 { sourcesEmpty.Show() } else { sourcesEmpty.Hide() }
         if len(snapshots) == 0 { snapshotEmpty.Show() } else { snapshotEmpty.Hide() }
@@ -796,12 +895,17 @@ func vaulticMain() {
         vaulticSetButtonEnabled(backupButton, !busy.Load() && len(sources) > 0)
         vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
         vaulticSetButtonEnabled(exclusionsButton,!busy.Load())
+        vaulticSetButtonEnabled(previewExclusionsButton,!busy.Load() && len(sources)>0 && len(saved.Profiles[profileIndex].Excludes)>0)
+        vaulticSetButtonEnabled(duplicateProfileButton,!busy.Load())
+        vaulticSetButtonEnabled(deleteProfileButton,!busy.Load() && len(saved.Profiles)>1)
         vaulticSetButtonEnabled(storageButton,!busy.Load() && activeRepository!="")
         vaulticSetButtonEnabled(removeSource, !busy.Load() && selectedSource >= 0)
         canRestore := !busy.Load() && selectedSnapshot >= 0
         vaulticSetButtonEnabled(explorerButton, canRestore)
         vaulticSetButtonEnabled(restoreButton, canRestore)
         vaulticSetButtonEnabled(verifyButton, !busy.Load() && activeRepository != "")
+        vaulticSetButtonEnabled(renameDepotButton,!busy.Load() && activeRepository!="")
+        vaulticSetButtonEnabled(forgetDepotButton,!busy.Load() && activeRepository!="")
         if busy.Load() { profileSelect.Disable() } else { profileSelect.Enable() }
         if busy.Load() || len(saved.Depots) == 0 {
             depotSelect.Disable()
@@ -836,7 +940,9 @@ func vaulticMain() {
             if depot.Location == activeRepository { activeName = depot.Name }
         }
         depotSelect.SetOptions(names)
-        if activeName != "" && depotSelect.Selected != activeName {
+        if activeName == "" {
+            if depotSelect.Selected!=""{depotSelect.ClearSelected()}
+        } else if depotSelect.Selected != activeName {
             depotSelect.SetSelected(activeName)
         }
         updateActions()
@@ -873,6 +979,8 @@ func vaulticMain() {
         vaulticWrappedLabel("Sélectionnez un dépôt enregistré, puis saisissez son mot de passe pour l’utiliser."),
         passEntry,
         verifyButton,
+        container.NewHBox(renameDepotButton,forgetDepotButton),
+        vaulticCaption("Retirer un dépôt de Vaultic ne supprime jamais ses sauvegardes."),
     ))
 
     startBackup:=widget.NewButtonWithIcon("Préparer une sauvegarde",theme.MediaPlayIcon(),nil)
@@ -903,8 +1011,10 @@ func vaulticMain() {
         container.NewPadded(container.NewVBox(
             vaulticHeading("Sauvegarde", 26),
             widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil,nil,nil,
-                container.NewHBox(newProfileButton, renameProfileButton), profileSelect))),
-            container.NewHBox(exclusionsButton,exclusionSummary),
+                container.NewHBox(newProfileButton,renameProfileButton),profileSelect))),
+            container.NewHBox(duplicateProfileButton,deleteProfileButton),
+            container.NewHBox(exclusionsButton,previewExclusionsButton),
+            exclusionSummary,
         )),
         container.NewPadded(vaulticSurface(container.NewVBox(
             vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),

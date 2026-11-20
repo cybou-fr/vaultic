@@ -36,6 +36,14 @@ Dashboard figures are derived from current in-app data. When snapshots have not 
 
 The **Storage** page runs restic's in-process `stats` in `raw-data` mode on demand. It shows referenced blob size, referenced blob count, and snapshots analyzed. These figures are **not total on-disk repository usage**: metadata, unreferenced data and free space are excluded. The operation is cancellable.
 
+## Safe repository/profile management and exclusion preview
+
+**Settings → Active repository** allows renaming the *display label* or **removing a repository from Vaultic's saved list**. Neither operation deletes or modifies the actual restic repository, snapshots, keys or backup files. The selected repository is reset and a fresh password is required when switching after removal.
+
+**Backup** supports duplicating a profile (with separate source and exclude lists) or deleting its local configuration. The last profile is protected; no restic snapshots are removed.
+
+**Preview exclusions…** scans local source paths read-only using restic's exclude pattern matching, with a cap of 25,000 visited entries and up to 80 example paths. The preview is explicitly indicative: an excluded directory represents one matched entry even when it contains many files, and `!` rules or concurrent filesystem changes can affect the real backup. It does **not** create a snapshot.
+
 ## Manual tests
 
 ```bash

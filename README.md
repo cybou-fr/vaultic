@@ -72,6 +72,16 @@ Chaque profil possède ses propres exclusions persistées dans les préférences
 
 L'écran **Stockage** déclenche manuellement l'opération native `stats` du moteur restic en mode `raw-data`. Il indique le nombre d'instantanés analysés, le nombre de blobs référencés et leur volume. **Ce volume n'est pas l'occupation complète du disque** : il exclut notamment les métadonnées et les données non référencées. Le calcul peut être interrompu et n'effectue pas de suppression.
 
+## Gestion des dépôts et profils (sans suppression des sauvegardes)
+
+Dans **Paramètres → Dépôt actif**, les boutons **Renommer…** et **Retirer de Vaultic…** ne modifient que la liste locale de dépôts. Renommer modifie uniquement le nom affiché ; retirer oublie le dépôt dans Vaultic, **sans supprimer le répertoire, les données, les instantanés ou les clés du dépôt restic**. Après le retrait du dépôt actif, Vaultic choisit le dépôt suivant s'il existe et demande à nouveau son mot de passe.
+
+Dans **Sauvegarde**, les boutons **Dupliquer…** et **Supprimer le profil…** gèrent les profils locaux. Une copie conserve indépendamment les sources et exclusions de l'original. Supprimer un profil ne supprime aucun instantané restic ; le dernier profil ne peut pas être supprimé.
+
+### Aperçu indicatif des exclusions
+
+Le bouton **Aperçu des exclusions…** parcourt les sources locales en lecture seule pour trouver des chemins correspondant aux motifs restic du profil. Le résultat est limité à **25 000 entrées parcourues** et **80 exemples affichés** ; le nombre de correspondances n'est pas le nombre exact de fichiers exclus, car un répertoire exclu peut contenir de nombreux fichiers. Les règles de ré-inclusion `!`, les autorisations et les changements du système de fichiers peuvent modifier le résultat du backup réel. Cet aperçu ne crée pas de snapshot et ne remplace pas une vérification de restauration.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
