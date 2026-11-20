@@ -109,7 +109,7 @@ The page shows the frequency, the **next planned run**, the **last successful ba
 **How it works**
 
 - The scheduler only works **while Vaultic is running**. There is no Windows service, no system task scheduler entry and no hidden process.
-- A scheduled backup starts only when a repository is active and its **password has been typed** (it is never saved). Otherwise it stays "overdue", which is reported once and never shown as a completed backup; it runs as soon as the password is available.
+- Each schedule is bound to the repository selected when the schedule is saved. Switching the active repository never redirects the scheduled backup. The bound repository must be active and its **password must have been typed** (it is never saved), otherwise the backup remains overdue until the correct repository and credentials are available.
 - **No backlog**: when several slots were missed (application closed, computer asleep, clock changed) a single catch-up backup runs. Resuming after a pause catches nothing up.
 - **One restic operation at a time**: manual backups, scheduled backups and other operations share one engine. If it is busy, the scheduled backup is deferred by 5 minutes, at most 3 times, then **skipped and recorded** until the next slot. There is no silent retry after a failure.
 - A backup counts as successful only if restic confirms a snapshot ID and reported no unreadable file.
@@ -120,7 +120,7 @@ The page shows the frequency, the **next planned run**, the **last successful ba
 
 Desktop **notifications**: backup completed, failed, skipped, overdue — each category can be turned off. The same event is notified once and bursts are limited.
 
-**Limitations**: a schedule does not protect your files if Vaultic is closed or the password has not been typed; the schedule applies to the active repository; notifications depend on system support; no retention policy in this version.
+**Limitations**: a schedule does not protect your files if Vaultic is closed or the password has not been typed; each schedule uses a fixed destination, and the active repository must match it; history and last-success indicators are scoped to that repository; notifications depend on system support; no retention policy in this version.
 
 ## Manual tests
 
