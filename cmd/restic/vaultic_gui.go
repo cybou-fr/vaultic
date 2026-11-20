@@ -4,7 +4,6 @@ package main
 // call restic's Go functions directly; no restic executable or shell is launched.
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -212,7 +211,6 @@ func vaulticMain() {
 	activeRepository := saved.Repository
 	cloudSessions := &vaulticCloudSessions{}
 	var setupUI *vaulticStorageSetupUI
-	var allowNoPassword, inlineResult bool // consumed by the next runWithDepot call
 	repoListBox := container.NewVBox()
 	var repoRowButtons []*widget.Button
 	repoValue := widget.NewLabel("Aucun dépôt configuré")
@@ -228,14 +226,8 @@ func vaulticMain() {
 	passEntry := widget.NewPasswordEntry()
 	passEntry.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré")
 
-	var cancelOp context.CancelFunc
-	var panel *vaulticStatusPanel
-	panel = newVaulticStatusPanel(func() {
-		if cancelOp != nil {
-			cancelOp()
-			panel.Status.SetText("Annulation…")
-		}
-	})
+	var runner *vaulticEngineRunner
+	panel := newVaulticStatusPanel(func() { runner.RequestCancel() })
 	status := panel.Status
 	logView := newVaulticLogView()
 	appendLog := logView.Append
@@ -283,7 +275,6 @@ func vaulticMain() {
 	}
 	stopScheduler := make(chan struct{})
 	var stopSchedulerOnce sync.Once
-	closing := false
 	closePrompt := false
 	var stopFocusFollow func()
 	closeWindow := func() {
@@ -336,134 +327,19 @@ func vaulticMain() {
 		windowContent.Refresh()
 	}
 
-	// Called from the restic worker's goroutines; all widget access is marshaled
-	// onto Fyne's UI thread. restic emits native JSON backup progress.
-	onOutput := func(ctx context.Context, title, line string, report *vaulticBackupReport, redact func(string) string) {
-		if line == "" {
-			return
-		}
-		var e vaulticEngineEvent
-		if json.Unmarshal([]byte(line), &e) == nil {
-			if report != nil {
-				report.record(e)
-			}
-			view := vaulticInterpretEvent(e, title, report != nil)
-			if view.HasProgress || view.Status != "" {
-				fyne.Do(func() {
-					if ctx.Err() != nil {
-						return
-					}
-					if view.HasProgress && panel.SetProgress(view.Progress) {
-						windowContent.Refresh()
-					}
-					if view.Status != "" {
-						status.SetText(view.Status)
-					}
-				})
-			}
-			if view.Suppress {
-				return
-			}
-			if view.Log != "" {
-				line = view.Log
-			}
-		}
-		line = redact(line)
-		fyne.Do(func() { appendLog(line) })
-	}
-
-	runWithDepot := func(title, repo, password string, create bool, fn func(context.Context, global.Options) error, finish func() error, report *vaulticBackupReport) {
-		noPassword, inline := allowNoPassword, inlineResult
-		allowNoPassword, inlineResult = false, false
-		if repo == "" || (password == "" && !noPassword) {
-			dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
-			return
-		}
-		if !busy.CompareAndSwap(false, true) {
-			dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", w)
-			return
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		cancelOp = cancel
-		if report != nil {
-			panel.Reserve()
-		}
-		setBusy(true)
-		panel.Progress.SetValue(0)
-		status.SetText(title + "…")
-		appendLog("Début : " + title)
-		cloudAuth := cloudSessions.get(repo)
-		redact := vaulticRedactCloudSecrets(vaulticRedactOperation(password), cloudAuth)
-		go func() {
-			terminal := &vaulticTerminal{line: func(line string) { onOutput(ctx, title, line, report, redact) }, output: io.Discard}
-			gopts := global.Options{
-				Repo: vaulticResolvedRepository(repo), Password: password, Backends: vaulticBackendsForSession(cloudAuth),
-				Term: terminal, JSON: true, Verbosity: 1,
-			}
-			var err error
-			if !create && !inline && vaulticLocalRepository(repo) {
-				if _, statErr := os.Stat(gopts.Repo); statErr != nil {
-					err = fmt.Errorf("dépôt inaccessible. Vérifiez le chemin et le branchement du disque : %w", statErr)
-				}
-			}
-			if err == nil {
-				err = fn(ctx, gopts)
-			}
-			fyne.Do(func() {
-				cancel()
-				cancelOp = nil
-				busy.Store(false)
-				if errors.Is(err, repository.ErrNoKeyFound) {
-					err = errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
-				}
-				if closing {
-					if err == nil && finish != nil {
-						_ = finish()
-					}
-					closeWindow()
-					return
-				}
-				if report != nil {
-					var outcome string
-					outcome, lastBackupReport, err = report.result(err)
-					lastBackupReport = redact(lastBackupReport)
-					status.SetText("Sauvegarde · " + outcome)
-					appendLog("Sauvegarde · " + lastBackupReport)
-					if err == nil {
-						recentRunValue.SetText(title)
-					}
-					setBusy(false)
-					showBackupReport()
-					return
-				}
-				setBusy(false)
-				if errors.Is(err, context.Canceled) {
-					status.SetText(title + " — annulé")
-					appendLog("Annulé : " + title)
-					return
-				}
-				if err == nil && finish != nil {
-					err = finish()
-				}
-				if err != nil {
-					status.SetText("Erreur : " + title)
-					message := redact(err.Error())
-					appendLog(message)
-					if inline {
-						status.SetText(message)
-					} else {
-						dialog.ShowError(errors.New(message), w)
-					}
-					return
-				}
-				status.SetText(title + " — terminé")
-				recentRunValue.SetText(title)
-				appendLog("Terminé : " + title)
-			})
-		}()
-	}
+	runner = newVaulticEngineRunner(vaulticRunnerHooks{
+		Window:        w,
+		Busy:          &busy,
+		Panel:         panel,
+		Log:           appendLog,
+		SetBusy:       setBusy,
+		CloseNow:      closeWindow,
+		CloudAuth:     func(repo string) vaulticCloudAuth { return cloudSessions.get(repo) },
+		Completed:     recentRunValue.SetText,
+		RefreshLayout: func() { windowContent.Refresh() },
+	})
 	run := func(title string, fn func(context.Context, global.Options) error) {
-		runWithDepot(title, activeRepository, passEntry.Text, false, fn, nil, nil)
+		runner.Run(title, activeRepository, passEntry.Text, vaulticRunOptions{}, fn, nil)
 	}
 
 	var activateDepot func(string, string)
@@ -518,8 +394,7 @@ func vaulticMain() {
 		if fromForm {
 			setupUI.SetState(vaulticProbeResult{State: vaulticConnTesting})
 		}
-		allowNoPassword, inlineResult = true, true
-		runWithDepot("Test de la connexion", location, password, false, func(ctx context.Context, g global.Options) error {
+		runner.Run("Test de la connexion", location, password, vaulticRunOptions{AllowNoPassword: true, Inline: true}, func(ctx context.Context, g global.Options) error {
 			res := probe(ctx, g, location)
 			if _, known := savedDepot(location); !known {
 				cloudSessions.forget(location)
@@ -537,7 +412,7 @@ func vaulticMain() {
 				return context.Canceled
 			}
 			return errors.New(res.State.Label() + " — " + res.Detail)
-		}, nil, nil)
+		}, nil)
 	}
 	connectDepot := func(setup vaulticStorageSetup, create bool) {
 		name, address := setup.Name, normalizeAddress(setup.Address)
@@ -564,8 +439,7 @@ func vaulticMain() {
 		}
 		setupUI.SetState(vaulticProbeResult{State: vaulticConnTesting})
 		var outcome vaulticProbeResult
-		inlineResult = true
-		runWithDepot(title, address, password, create, func(ctx context.Context, g global.Options) error {
+		runner.Run(title, address, password, vaulticRunOptions{Create: create, Inline: true}, func(ctx context.Context, g global.Options) error {
 			var err error
 			if create {
 				createCtx, stop := context.WithTimeout(ctx, 2*vaulticProbeTimeout)
@@ -615,7 +489,7 @@ func vaulticMain() {
 			setupUI.Reset()
 			setupUI.SetState(final)
 			return nil
-		}, nil)
+		})
 	}
 	saveEditedDepot := func(setup vaulticStorageSetup) {
 		old, address := editingLocation, normalizeAddress(setup.Address)
@@ -791,7 +665,7 @@ func vaulticMain() {
 			}
 		},
 		RunWithDepot: func(title string, fn func(context.Context, global.Options) error, done func() error) {
-			runWithDepot(title, activeRepository, passEntry.Text, false, fn, done, nil)
+			runner.Run(title, activeRepository, passEntry.Text, vaulticRunOptions{}, fn, done)
 		},
 	})
 	// Every backup, manual or scheduled, goes through the coordinator: one
@@ -827,7 +701,7 @@ func vaulticMain() {
 		if !manual {
 			title = "Sauvegarde planifiée"
 		}
-		cancelOp = coord.Cancel
+		runner.SetCancel(coord.Cancel)
 		panel.Reserve()
 		setBusy(true)
 		panel.Progress.SetValue(0)
@@ -839,13 +713,13 @@ func vaulticMain() {
 		}
 		exec := vaulticBackupExecutor(gopts, append([]string(nil), profile.Sources...), append([]string(nil), profile.Excludes...),
 			func(report *vaulticBackupReport, line string) {
-				onOutput(context.Background(), title, line, report, redact)
+				runner.Handle(context.Background(), title, line, report, redact)
 			})
 		job := vaulticJob{Profile: profileName, Repository: repo, Trigger: trigger, Slot: slot, CatchUp: catchUp, Redact: redact}
 		go func() {
 			record := coord.RunAcquired(job, exec)
 			fyne.Do(func() {
-				cancelOp = nil
+				runner.SetCancel(nil)
 				lastBackupReport = coord.LastReport()
 				status.SetText(title + " · " + vaulticStatusLabel(record.Status))
 				appendLog(title + " · " + lastBackupReport)
@@ -853,7 +727,7 @@ func vaulticMain() {
 					recentRunValue.SetText(title)
 				}
 				setBusy(false)
-				if closing {
+				if runner.Closing() {
 					closeWindow()
 					return
 				}
@@ -958,7 +832,7 @@ func vaulticMain() {
 		UpdateActions:    func() { updateActions() },
 		Run:              func(title string, fn func(context.Context, global.Options) error) { run(title, fn) },
 		RunWithDepot: func(title string, fn func(context.Context, global.Options) error, done func() error) {
-			runWithDepot(title, activeRepository, passEntry.Text, false, fn, done, nil)
+			runner.Run(title, activeRepository, passEntry.Text, vaulticRunOptions{}, fn, done)
 		},
 	})
 	checkButton := widget.NewButton("Vérifier l'intégrité", func() {
@@ -1081,10 +955,7 @@ func vaulticMain() {
 			}
 		},
 		Cancel: func() {
-			if cancelOp != nil {
-				cancelOp()
-				status.SetText("Annulation…")
-			}
+			runner.RequestCancel()
 		},
 		Wizard:     cloudWizardHook,
 		CancelEdit: func() { editingLocation = ""; setupUI.Reset() },
@@ -1184,7 +1055,7 @@ func vaulticMain() {
 	profiles.Refresh()
 	w.SetContent(windowContent)
 	w.SetCloseIntercept(func() {
-		if closing || closePrompt {
+		if runner.Closing() || closePrompt {
 			return
 		}
 		if busy.Load() {
@@ -1194,13 +1065,9 @@ func vaulticMain() {
 				if !ok {
 					return
 				}
-				if cancelOp == nil {
+				if !runner.BeginClose() {
 					closeWindow()
-					return
 				}
-				closing = true
-				cancelOp()
-				status.SetText("Annulation avant fermeture…")
 			}, w)
 			return
 		}
