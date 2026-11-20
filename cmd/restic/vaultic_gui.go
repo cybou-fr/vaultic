@@ -149,6 +149,13 @@ func vaulticMain() {
 
     saved, settingsErr := vaulticLoadSettings()
     profileIndex := saved.migrateBackupProfiles()
+    // Migrate existing schedules once: their old implicit destination was
+    // the active repository. Subsequent changes must not silently retarget it.
+    for i := range saved.Profiles {
+        if schedule := saved.Profiles[i].Schedule; schedule != nil && schedule.Repository == "" {
+            schedule.Repository = saved.Repository
+        }
+    }
     for _, profile := range saved.Profiles {
         for i, source := range profile.Sources {
             if !filepath.IsAbs(source) {
@@ -947,6 +954,22 @@ func vaulticMain() {
     backupButton := widget.NewButton("Sauvegarder maintenant",func(){
         launchBackup(vaulticTriggerManual, saved.Profiles[profileIndex].Name, time.Time{}, false)
     })
+    // UI-owned settings are changed on the Fyne thread. A worker waits until
+    // persistence finishes, so the slot is durable before releasing the gate.
+    saveScheduleSlot := func(profile string, slot time.Time) error {
+        for i := range saved.Profiles {
+            if saved.Profiles[i].Name == profile && saved.Profiles[i].Schedule != nil {
+                old := saved.Profiles[i].Schedule.LastSlot
+                saved.Profiles[i].Schedule.LastSlot = slot.Format(time.RFC3339)
+                if err := persist(saved.Depots, activeRepository); err != nil {
+                    saved.Profiles[i].Schedule.LastSlot = old
+                    return err
+                }
+                return nil
+            }
+        }
+        return fmt.Errorf("Profil planifié introuvable : %s", profile)
+    }
     coord = newVaulticCoordinator(&busy, vaulticCoordinatorEnv{
         Now: time.Now,
         Location: func() *time.Location { return time.Local },
@@ -961,17 +984,11 @@ func vaulticMain() {
         Repository: func() string { return activeRepository },
         HasCredentials: func() bool { return passEntry.Text != "" },
         Paused: func() bool { return saved.SchedulerPaused },
-        SaveSlot: func(profile string, slot time.Time) error {
-            // May be called from the worker goroutine: settings are only touched on the interface thread.
-            fyne.Do(func(){
-                for i := range saved.Profiles {
-                    if saved.Profiles[i].Name == profile && saved.Profiles[i].Schedule != nil {
-                        saved.Profiles[i].Schedule.LastSlot = slot.Format(time.RFC3339)
-                        if err := persist(saved.Depots, activeRepository); err != nil { appendLog("Erreur d'enregistrement des préférences : "+err.Error()) }
-                    }
-                }
-            })
-            return nil
+        SaveSlot: saveScheduleSlot,
+        SaveSlotWorker: func(profile string, slot time.Time) error {
+            var saveErr error
+            fyne.DoAndWait(func() { saveErr = saveScheduleSlot(profile, slot) })
+            return saveErr
         },
         Start: func(job vaulticJob) bool { return launchBackup(job.Trigger, job.Profile, job.Slot, job.CatchUp) },
     }, historyStore, newVaulticNotifier(
@@ -980,6 +997,12 @@ func vaulticMain() {
         time.Now,
     ))
     coord.OnChange = func() { fyne.Do(func(){ if automationUI != nil { automationUI.Refresh() }; updateActions() }) }
+    coord.OnPersistenceError = func(err error) {
+        fyne.Do(func() {
+            appendLog("Erreur de sauvegarde des métadonnées : " + err.Error())
+            status.SetText("Attention : historique ou planification non enregistré(e).")
+        })
+    }
     go func() {
         ticker := time.NewTicker(15 * time.Second)
         defer ticker.Stop()
@@ -1365,8 +1388,20 @@ func vaulticMain() {
             if schedule.Kind == vaulticScheduleManual {
                 next[profileIndex].Schedule = nil
             } else {
-                // A new or changed schedule counts from now: enabling it never starts an immediate backup.
-                if old != nil && old.Kind == schedule.Kind && old.Enabled == schedule.Enabled && old.EveryHours == schedule.EveryHours &&
+                // The selected repository becomes this schedule's explicit target.
+                // Switching repositories later must not silently redirect backups.
+                if activeRepository != "" { schedule.Repository = activeRepository
+                } else if old != nil { schedule.Repository = old.Repository }
+                if schedule.Enabled && schedule.Repository == "" {
+                    return errors.New("Sélectionnez un dépôt dans Dépôts avant d'activer la planification.")
+                }
+                if err := vaulticValidateDepot(schedule.Repository); schedule.Enabled && err != nil {
+                    return errors.New("Le dépôt de destination est invalide.")
+                }
+                // An unchanged schedule preserves its slot; a changed destination
+                // starts fresh instead of replaying an old repository's schedule.
+                if old != nil && old.Repository == schedule.Repository && old.Kind == schedule.Kind &&
+                    old.Enabled == schedule.Enabled && old.EveryHours == schedule.EveryHours &&
                     old.Time == schedule.Time && old.MonthDay == schedule.MonthDay && fmt.Sprint(old.Weekdays) == fmt.Sprint(schedule.Weekdays) {
                     schedule.LastSlot = old.LastSlot
                 } else if schedule.Enabled {
@@ -1392,6 +1427,7 @@ func vaulticMain() {
             if err := persist(saved.Depots, activeRepository); err != nil { appendLog("Erreur d'enregistrement des préférences : "+err.Error()) }
         },
         Coordinator: coord, History: historyStore, Now: time.Now,
+        ActiveRepository: func() string { return activeRepository },
         Credentials: func() bool { return passEntry.Text != "" },
         Location: func() *time.Location { return time.Local },
     })
