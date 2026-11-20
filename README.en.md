@@ -97,7 +97,7 @@ Each saved repository shows its name, provider, location (without credentials), 
 
 - Cloud connections (S3, B2, Azure, GCS, Swift, rclone, SFTP) have not yet been validated against real services; REST and Swift are tested with mock servers and local storage with real temporary repositories.
 - The restic engine **creates the Swift container** when it does not exist on open, including during a test.
-- Swift: Keystone v3 only; Application Credentials by ID.
+- Swift: Keystone v3 only; Application Credentials by ID. The Keystone URL must be HTTPS (HTTP only to localhost), end with `/v3` and contain no credentials, query or fragment; it is normalized before being kept in memory.
 - Google Cloud: no key entry in Vaultic (ADC only).
 
 ## Manual tests

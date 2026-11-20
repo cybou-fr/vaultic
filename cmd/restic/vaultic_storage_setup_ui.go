@@ -286,6 +286,8 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 		container.NewHBox(vaulticCaption("ÉTAT DE LA CONNEXION"), u.badge),
 		u.detail, u.busyBar, u.cancelBtn,
 	)
+	identity := widget.NewForm(widget.NewFormItem("Nom dans Vaultic", u.name), widget.NewFormItem("Mot de passe restic", u.pass))
+	identity.Orientation = widget.Vertical
 	u.Content = vaulticSurface(container.NewVBox(
 		u.title,
 		vaulticCaption("1 · Choisissez le type de stockage"),
@@ -296,7 +298,7 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 		vaulticCaption("2 · Renseignez l'emplacement"),
 		u.fieldBox,
 		vaulticCaption("3 · Nommez le dépôt et protégez-le"),
-		widget.NewForm(widget.NewFormItem("Nom dans Vaultic", u.name), widget.NewFormItem("Mot de passe restic", u.pass)),
+		identity,
 		u.preview, u.problem,
 		widget.NewSeparator(),
 		state,
@@ -400,7 +402,9 @@ func (u *vaulticStorageSetupUI) rebuildForm() {
 			items = append(items, item)
 		}
 	}
-	u.fieldBox.Objects = []fyne.CanvasObject{widget.NewForm(items...)}
+	form := widget.NewForm(items...)
+	form.Orientation = widget.Vertical // label above field: fits the narrowest window
+	u.fieldBox.Objects = []fyne.CanvasObject{form}
 	u.fieldBox.Refresh()
 }
 

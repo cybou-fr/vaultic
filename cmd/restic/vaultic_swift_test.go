@@ -1,14 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,14 +37,99 @@ type mockKeystone struct {
 	appSecret string
 	container int // status for the container request (default 204)
 	hang      chan struct{}
+	objects   map[string][]byte // in-memory object store, enabled by withObjects
+	conns     atomic.Int32
 }
 
 func newMockKeystone(t *testing.T) *mockKeystone {
 	t.Helper()
 	m := &mockKeystone{container: http.StatusNoContent}
-	m.Server = httptest.NewServer(http.HandlerFunc(m.handle))
+	m.Server = httptest.NewUnstartedServer(http.HandlerFunc(m.handle))
+	m.Server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		switch state {
+		case http.StateNew:
+			m.conns.Add(1)
+		case http.StateClosed, http.StateHijacked:
+			m.conns.Add(-1)
+		}
+	}
+	m.Server.Start()
 	t.Cleanup(m.Server.Close)
 	return m
+}
+
+// withObjects turns the mock into a working (in-memory) Swift object store, so
+// a real restic repository can be created, closed and reopened through it.
+func (m *mockKeystone) withObjects() *mockKeystone {
+	m.mu.Lock()
+	m.objects = map[string][]byte{}
+	m.mu.Unlock()
+	return m
+}
+
+func (m *mockKeystone) serveObjects(w http.ResponseWriter, r *http.Request) bool {
+	const base = "/swift/v1/AUTH_project/vault"
+	if r.URL.Path != base && !strings.HasPrefix(r.URL.Path, base+"/") {
+		return false
+	}
+	name := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, base), "/")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch {
+	case name == "":
+		if r.Method == http.MethodGet && r.URL.Query().Get("format") == "json" {
+			type entry struct {
+				Name  string `json:"name"`
+				Bytes int    `json:"bytes"`
+				Hash  string `json:"hash"`
+				CT    string `json:"content_type"`
+				LM    string `json:"last_modified"`
+			}
+			list := []entry{}
+			prefix := r.URL.Query().Get("prefix")
+			if r.URL.Query().Get("marker") == "" {
+				for key, data := range m.objects {
+					if strings.HasPrefix(key, prefix) {
+						sum := md5.Sum(data)
+						list = append(list, entry{key, len(data), hex.EncodeToString(sum[:]), "application/octet-stream", "2026-11-20T10:00:00.000000"})
+					}
+				}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Container-Object-Count", strconv.Itoa(len(m.objects)))
+			w.Header().Set("X-Container-Bytes-Used", "0")
+			_ = json.NewEncoder(w).Encode(list)
+			return true
+		}
+		w.Header().Set("X-Container-Object-Count", strconv.Itoa(len(m.objects)))
+		w.Header().Set("X-Container-Bytes-Used", "0")
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodPut:
+		body, _ := io.ReadAll(r.Body)
+		m.objects[name] = body
+		sum := md5.Sum(body)
+		w.Header().Set("Etag", hex.EncodeToString(sum[:]))
+		w.WriteHeader(http.StatusCreated)
+	case r.Method == http.MethodDelete:
+		if _, ok := m.objects[name]; !ok {
+			http.NotFound(w, r)
+			return true
+		}
+		delete(m.objects, name)
+		w.WriteHeader(http.StatusNoContent)
+	default: // GET and HEAD
+		data, ok := m.objects[name]
+		if !ok {
+			http.NotFound(w, r)
+			return true
+		}
+		sum := md5.Sum(data)
+		w.Header().Set("Etag", hex.EncodeToString(sum[:]))
+		w.Header().Set("Last-Modified", "Fri, 20 Nov 2026 10:00:00 GMT")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
+	}
+	return true
 }
 
 func (m *mockKeystone) handle(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +163,9 @@ func (m *mockKeystone) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if m.objects != nil && m.serveObjects(w, r) {
+		return
+	}
 	if strings.Trim(r.URL.Path, "/") == "swift/v1/AUTH_project/vault" {
 		w.Header().Set("X-Container-Object-Count", "0")
 		w.Header().Set("X-Container-Bytes-Used", "0")
@@ -82,10 +176,9 @@ func (m *mockKeystone) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *mockKeystone) accepts(body string) bool {
-	if m.appID != "" {
-		return strings.Contains(body, `"id":"`+m.appID+`"`) && strings.Contains(body, `"secret":"`+m.appSecret+`"`)
-	}
-	return strings.Contains(body, `"name":"`+m.user+`"`) && strings.Contains(body, `"password":"`+m.password+`"`)
+	app := m.appID != "" && strings.Contains(body, `"id":"`+m.appID+`"`) && strings.Contains(body, `"secret":"`+m.appSecret+`"`)
+	pw := m.user != "" && strings.Contains(body, `"name":"`+m.user+`"`) && strings.Contains(body, `"password":"`+m.password+`"`)
+	return app || pw
 }
 
 func (m *mockKeystone) lastRequest(t *testing.T) string {

@@ -44,6 +44,6 @@ func vaulticRepositoryRow(depot vaulticDepot, active bool, h vaulticRepositoryHo
 	forget := widget.NewButtonWithIcon("Oublier", theme.DeleteIcon(), func() { h.Forget(depot) })
 	forget.Importance = widget.LowImportance
 
-	body := container.NewVBox(head, provider, location, verified, container.NewHBox(connect, edit, test, forget))
+	body := container.NewVBox(head, provider, location, verified, container.NewGridWrap(fyne.NewSize(112, 38), connect, edit, test, forget))
 	return vaulticSurfaceRaised(body), []*widget.Button{connect, edit, test, forget}
 }

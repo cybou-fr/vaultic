@@ -141,6 +141,9 @@ func vaulticGuidedRESTURL(raw string) (*url.URL, error) {
 	if err != nil || u == nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || strings.Contains(raw, "@") {
 		return nil, bad
 	}
+	if strings.ContainsAny(raw, " 	\\") || vaulticCheckHTTPHost(u) != nil {
+		return nil, errors.New("Hôte, port ou caractères de l'URL invalides.")
+	}
 	switch u.Scheme {
 	case "https":
 	case "http":
@@ -296,8 +299,8 @@ func vaulticStorageFields(scheme string) []vaulticStorageField {
 		}
 	case "swift":
 		return []vaulticStorageField{
-			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true, Help: "Créé par le moteur restic s'il n'existe pas encore."}, prefix,
-			{Key: "authurl", Label: "URL Keystone v3", Placeholder: "https://auth.exemple.fr/v3", Help: "Vide : variables OS_* du système. Sinon identifiants gardés en mémoire pour cette session."},
+			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true, Help: "Créé par restic s'il n'existe pas."}, prefix,
+			{Key: "authurl", Label: "URL Keystone v3", Placeholder: "https://auth.exemple.fr/v3", Help: "Vide : variables OS_* du système."},
 			{Key: "authmode", Label: "Authentification", Choices: []string{vaulticSwiftPasswordChoice, vaulticSwiftAppCredChoice}, Default: vaulticSwiftPasswordChoice},
 			{Key: "username", Label: "Utilisateur", Placeholder: "nom d'utilisateur", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
 			{Key: "appid", Label: "ID de l'Application Credential", Placeholder: "identifiant (UUID)", ModeKey: "authmode", ModeValue: vaulticSwiftAppCredChoice},

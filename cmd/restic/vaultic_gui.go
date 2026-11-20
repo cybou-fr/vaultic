@@ -234,7 +234,9 @@ func vaulticMain() {
     var cancelOp context.CancelFunc
     closing := false
     closePrompt := false
+    var stopFocusFollow func()
     closeWindow := func() {
+        if stopFocusFollow!=nil{stopFocusFollow()}
         save()
         passEntry.SetText("")
         if setupUI!=nil{setupUI.pass.SetText("")}
@@ -459,9 +461,7 @@ func vaulticMain() {
     // probe runs on the worker goroutine; the detail text is redacted because
     // it may quote engine errors.
     probe := func(ctx context.Context, g global.Options, location string) vaulticProbeResult {
-        res := vaulticProbeRepository(ctx, g, vaulticProbeTimeout, vaulticVerifyDepot)
-        res.Detail = vaulticRedactCloudSecrets(vaulticRedactOperation(g.Password), cloudSessions.get(location))(res.Detail)
-        return res
+        return vaulticProbeRedacted(ctx, g, vaulticProbeTimeout, cloudSessions.get(location), vaulticVerifyDepot)
     }
     // testRepository checks a repository without changing it. Without a
     // password it can only prove reachability, never a successful connection.
@@ -1208,7 +1208,7 @@ func vaulticMain() {
     savedRepositories:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dépôts enregistrés",20),
         repoListBox,
-        vaulticCaption("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance."),
+        vaulticWrappedLabel("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance."),
     ))
     activeConfiguration:=vaulticSurface(container.NewVBox(
         vaulticHeading("Dépôt actif",20),
@@ -1321,6 +1321,7 @@ func vaulticMain() {
     )))
 
     pages:=[]fyne.CanvasObject{overviewPage,backupPage,snapshotPage,storagePage,checkPage,journalPage,repositoriesPage,settingsPage}
+    stopFocusFollow=vaulticKeepFocusVisible(w,[]*container.Scroll{overviewPage,storagePage,checkPage,repositoriesPage,settingsPage})
     mainPage:=container.NewStack(overviewPage)
     var navButtons []*widget.Button
     navigate:=func(index int){

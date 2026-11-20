@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"net"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/restic/restic/internal/backend"
+	"github.com/restic/restic/internal/backend/limiter"
+	"github.com/restic/restic/internal/backend/location"
 	"github.com/restic/restic/internal/global"
 	"github.com/restic/restic/internal/repository"
 )
@@ -129,6 +135,9 @@ func vaulticProbeRepository(ctx context.Context, g global.Options, timeout time.
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	passwordGiven := g.Password != ""
+	if g.Backends != nil {
+		g.Backends = vaulticClosingRegistry(g.Backends)
+	}
 	done := make(chan error, 1)
 	go func() { done <- open(ctx, g) }()
 	select {
@@ -137,4 +146,99 @@ func vaulticProbeRepository(ctx context.Context, g global.Options, timeout time.
 	case <-ctx.Done():
 		return vaulticClassifyProbe(ctx.Err(), passwordGiven)
 	}
+}
+
+// The engine hands every backend a shared-style HTTP transport that nothing
+// ever closes: after a connection test its idle keep-alive connections (and the
+// goroutines serving them) would linger for 90 seconds. For tests, each HTTP
+// based backend gets a private transport that is closed together with the
+// backend, including when opening fails or is cancelled.
+var vaulticHTTPBackends = map[string]bool{"rest": true, "s3": true, "b2": true, "azure": true, "gs": true, "swift": true}
+
+type vaulticIdleCloser interface{ CloseIdleConnections() }
+
+type vaulticClosingFactory struct{ location.Factory }
+
+// private builds a transport with the same settings as the engine's default
+// (environment proxy, timeouts, HTTP/2) but without its request watchdog
+// wrapper, which hides CloseIdleConnections. Requests are bounded by the
+// probe's own context instead.
+func (f vaulticClosingFactory) private() (http.RoundTripper, vaulticIdleCloser) {
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          10,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       &tls.Config{},
+	}
+	return tr, tr
+}
+
+func (f vaulticClosingFactory) wrap(be backend.Backend, closer vaulticIdleCloser, err error) (backend.Backend, error) {
+	if err != nil {
+		if closer != nil {
+			closer.CloseIdleConnections()
+		}
+		return nil, err
+	}
+	if closer == nil {
+		return be, nil
+	}
+	return vaulticClosingBackend{Backend: be, closer: closer}, nil
+}
+
+func (f vaulticClosingFactory) Create(ctx context.Context, cfg interface{}, rt http.RoundTripper, lim limiter.Limiter, onError func(string, ...interface{})) (backend.Backend, error) {
+	own, closer := f.private()
+	if own == nil {
+		own = rt
+	}
+	be, err := f.Factory.Create(ctx, cfg, own, lim, onError)
+	return f.wrap(be, closer, err)
+}
+
+func (f vaulticClosingFactory) Open(ctx context.Context, cfg interface{}, rt http.RoundTripper, lim limiter.Limiter, onError func(string, ...interface{})) (backend.Backend, error) {
+	own, closer := f.private()
+	if own == nil {
+		own = rt
+	}
+	be, err := f.Factory.Open(ctx, cfg, own, lim, onError)
+	return f.wrap(be, closer, err)
+}
+
+type vaulticClosingBackend struct {
+	backend.Backend
+	closer vaulticIdleCloser
+}
+
+func (b vaulticClosingBackend) Close() error {
+	err := b.Backend.Close()
+	b.closer.CloseIdleConnections()
+	return err
+}
+
+func vaulticClosingRegistry(src *location.Registry) *location.Registry {
+	registry := location.NewRegistry()
+	for _, info := range vaulticBackendCatalog {
+		factory := src.Lookup(info.Scheme)
+		if factory == nil {
+			continue
+		}
+		if vaulticHTTPBackends[info.Scheme] {
+			factory = vaulticClosingFactory{Factory: factory}
+		}
+		registry.Register(factory)
+	}
+	return registry
+}
+
+// vaulticProbeRedacted is vaulticProbeRepository with every user-facing detail
+// scrubbed of the restic password, the session credentials and URL secrets:
+// engine and server error messages sometimes echo what was sent.
+func vaulticProbeRedacted(ctx context.Context, g global.Options, timeout time.Duration, auth vaulticCloudAuth, open func(context.Context, global.Options) error) vaulticProbeResult {
+	res := vaulticProbeRepository(ctx, g, timeout, open)
+	res.Detail = vaulticRedactCloudSecrets(vaulticRedactOperation(g.Password), auth)(res.Detail)
+	return res
 }

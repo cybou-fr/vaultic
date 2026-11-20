@@ -144,7 +144,7 @@ Chaque dépôt enregistré affiche son nom, son fournisseur, son emplacement (sa
 
 - Les connexions cloud (S3, B2, Azure, GCS, Swift, rclone, SFTP) n'ont pas encore été validées contre de vrais services ; REST et Swift sont testés avec des serveurs simulés, le stockage local avec de vrais dépôts temporaires.
 - Le moteur restic **crée le conteneur Swift** s'il n'existe pas lors de l'ouverture, y compris pendant un test.
-- Swift : Keystone v3 uniquement ; Application Credential par ID.
+- Swift : Keystone v3 uniquement ; Application Credential par ID. L'URL Keystone doit être en HTTPS (HTTP seulement vers localhost), se terminer par `/v3` et ne contenir ni identifiants, ni paramètres, ni fragment ; elle est normalisée avant d'être gardée en mémoire.
 - Google Cloud : pas de saisie de clé dans Vaultic (ADC uniquement).
 
 ## Fonctionnalités en développement
