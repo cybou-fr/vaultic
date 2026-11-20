@@ -902,15 +902,7 @@ func vaulticMain() {
                     comparison,err=vaulticCompareSnapshots(ctx,g,sourceID,target.ID)
                     return err
                 },func()error{
-                    results:=widget.NewMultiLineEntry()
-                    results.Wrapping=fyne.TextWrapWord
-                    results.SetText(vaulticFormatComparison(comparison))
-                    results.Disable()
-                    content:=container.NewVScroll(results)
-                    content.SetMinSize(fyne.NewSize(570,360))
-                    resultsDialog:=dialog.NewCustom("Différences entre instantanés","Fermer",content,w)
-                    resultsDialog.Resize(fyne.NewSize(720,540))
-                    resultsDialog.Show()
+                    vaulticShowVisualComparison(a,comparison)
                     return nil
                 },nil)
         },w).Show()

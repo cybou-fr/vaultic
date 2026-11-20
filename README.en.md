@@ -50,6 +50,12 @@ On the **Snapshots** screen, **Taille et fichiers…** measures regular file cou
 
 **Comparer…** selects a reference snapshot (before) and compares it with the selected snapshot (after). Vaultic invokes the original restic `diff` function in process, providing added, removed and modified files, directories and referenced blob deltas. The collector retains only the first 180 path changes while processing the complete comparison. Metadata-only differences are not enabled. The operation may be cancelled; no snapshot is modified or deleted.
 
+### Visual snapshot comparison (Before / After)
+
+**Compare…** now opens a dedicated window with **two synchronized columns** (Before and After). Added paths appear only on the After side, removed paths only on the Before side, and modified paths on both sides. Use the **All / Added / Modified / Removed** filters (French GUI: Toutes / Ajoutés / Modifiés / Supprimés) or the path search field.
+
+Category totals reflect the **entire native restic diff**, while only the first **180 changes per category** are retained for display (up to 540 paths), keeping memory bounded. Search is limited to retained paths, and the UI explicitly discloses that limit. Unchanged files are not listed, and metadata-only changes are not enabled. Comparing never modifies a repository or snapshot.
+
 ## Manual tests
 
 ```bash

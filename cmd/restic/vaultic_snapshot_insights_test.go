@@ -4,6 +4,7 @@ import (
     "bytes"
     "context"
     "encoding/json"
+    "fmt"
     "os"
     "path/filepath"
     "strings"
@@ -102,4 +103,26 @@ func TestVaulticSuggestedComparisonBasePrefersSameSources(t *testing.T){
     if id:=vaulticSuggestedComparisonBase(entries[:1],entries[0]);id!=""{
         t.Fatalf("single snapshot yielded base %q",id)
     }
+}
+
+func TestVaulticDiffCollectorRetainsEachChangeCategory(t *testing.T){
+ c:=&vaulticDiffCollector{}
+ for _,mod:=range []string{"+","M","-"} {
+  for i:=0;i<220;i++ {
+   line:=fmt.Sprintf("{\"message_type\":\"change\",\"path\":\"/file-%d\",\"modifier\":%q}\n",i,mod)
+   if _,err:=c.Write([]byte(line));err!=nil{t.Fatal(err)}
+  }
+ }
+ c.Write([]byte("{\"message_type\":\"statistics\",\"added\":{\"files\":220},\"removed\":{\"files\":220},\"changed_files\":220}\n"))
+ if c.decodeErr!=nil || !c.gotStats {t.Fatalf("collector errors: %v",c.decodeErr)}
+ if c.result.TotalChanges!=660 || c.result.AddedChanges!=220 || c.result.ModifiedChanges!=220 || c.result.RemovedChanges!=220 {
+  t.Fatalf("incorrect full counters: %+v",c.result)
+ }
+ if len(c.result.Changes)!=3*vaulticDiffPreviewLimit {
+  t.Fatalf("expected %d retained changes, got %d",3*vaulticDiffPreviewLimit,len(c.result.Changes))
+ }
+ for _,category:=range []string{vaulticDiffAdded,vaulticDiffModified,vaulticDiffRemoved}{
+  got:=vaulticFilterDiffChanges(c.result.Changes,category,"")
+  if len(got)!=vaulticDiffPreviewLimit {t.Errorf("%s sample: %d",category,len(got))}
+ }
 }

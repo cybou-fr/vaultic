@@ -75,6 +75,9 @@ type vaulticSnapshotComparison struct {
     Stats DiffStatsContainer
     Changes []vaulticDiffRecord
     TotalChanges int
+    AddedChanges int
+    RemovedChanges int
+    ModifiedChanges int
 }
 
 type vaulticDiffCollector struct {
@@ -93,8 +96,22 @@ func (c *vaulticDiffCollector) collectLine(line []byte){
         var item vaulticDiffRecord
         if err:=json.Unmarshal(line,&item);err!=nil{c.decodeErr=err;return}
         c.result.TotalChanges++
-        if len(c.result.Changes)<vaulticDiffPreviewLimit {
-            // Very long filenames must not make the results dialog huge.
+        // Keep a separate bounded sample of EACH category. Otherwise the first
+        // 180 additions might hide every deletion and modification in the UI.
+        count:=0
+        switch vaulticDiffCategory(item.Modifier) {
+        case vaulticDiffAdded:
+            c.result.AddedChanges++
+            count=c.result.AddedChanges
+        case vaulticDiffRemoved:
+            c.result.RemovedChanges++
+            count=c.result.RemovedChanges
+        default:
+            c.result.ModifiedChanges++
+            count=c.result.ModifiedChanges
+        }
+        if count<=vaulticDiffPreviewLimit {
+            // Long and control-character paths must not overwhelm the UI.
             if len(item.Path)>700 {
                 chars:=[]rune(item.Path)
                 if len(chars)>300 {item.Path=string(chars[:300])+"…"}
@@ -107,7 +124,7 @@ func (c *vaulticDiffCollector) collectLine(line []byte){
     }
 }
 
-// Streaming collector. Only the first N changes are retained; the native
+// Streaming collector. Only the first N changes per category are retained;
 // restic diff can emit hundreds of thousands of entries on large repositories.
 func (c *vaulticDiffCollector) Write(p []byte)(int,error){
     n:=len(p)

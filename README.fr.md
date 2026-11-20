@@ -91,6 +91,12 @@ Dans **Instantanés**, sélectionnez un instantané puis :
 
 L'analyse des fichiers est **à la demande** ; les valeurs sont ensuite affichées dans la liste des instantanés pour la session courante et sont remises à zéro lors du changement de dépôt. La comparaison peut être annulée. Elle conserve en mémoire uniquement les 180 premières modifications, mais calcule les statistiques de l'ensemble du diff. Les différences de métadonnées seules ne sont pas affichées avec les options actuelles.
 
+### Comparaison visuelle Avant / Après
+
+Le bouton **Comparer…** ouvre maintenant une fenêtre dédiée avec **deux colonnes synchronisées** (instantané avant / après). Les chemins ajoutés n'apparaissent que dans la colonne après ; les chemins supprimés ne figurent que dans la colonne avant ; les modifications apparaissent dans les deux colonnes. Les filtres **Toutes / Ajoutés / Modifiés / Supprimés** et la recherche par nom ou chemin rendent la liste plus pratique à explorer.
+
+Les nombres par catégorie sont calculés sur **l'ensemble** du diff restic, mais l'interface ne garde que **180 chemins par catégorie** (au plus 540 au total), pour limiter l'usage de mémoire sur les très grands dépôts. La recherche ne s'applique qu'aux chemins retenus dans cet aperçu ; les totaux complets restent affichés. Les éléments inchangés ne sont pas listés et les changements de métadonnées seuls ne sont pas activés. La comparaison est en lecture seule et ne modifie aucun instantané.
+
 ## Fonctionnalités en développement
 
 - Dépôts chiffrés compatibles avec le format restic, local et distant.
