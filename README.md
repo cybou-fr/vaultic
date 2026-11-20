@@ -56,7 +56,8 @@ L'interface de bureau Fyne utilise une palette nuit bleu profond avec un accent 
 - **Stockage** : analyse manuelle des données référencées par les instantanés.
 - **Intégrité** : vérification du dépôt sans suppression.
 - **Activité** : journal de la session et messages restic.
-- **Paramètres** : chemin du dépôt, mot de passe en mémoire et initialisation.
+- **Dépôts** : choix du type de stockage, configuration guidée, mot de passe en mémoire, test de connexion et liste des dépôts.
+- **Paramètres** : informations sur Vaultic.
 
 Les données de tableau de bord restent volontairement neutres lorsqu'aucun instantané n'a été chargé : **Vaultic n'affiche jamais « protégé » sur la base d'informations inventées**. Le design est appliqué directement dans `cmd/restic/vaultic_ui_style.go`, `vaultic_ui_brand.go` et `vaultic_gui.go` : aucun framework web ni programme externe n'est nécessaire.
 
@@ -74,7 +75,7 @@ L'écran **Stockage** déclenche manuellement l'opération native `stats` du mot
 
 ## Gestion des dépôts et profils (sans suppression des sauvegardes)
 
-Dans **Paramètres → Dépôt actif**, les boutons **Renommer…** et **Retirer de Vaultic…** ne modifient que la liste locale de dépôts. Renommer modifie uniquement le nom affiché ; retirer oublie le dépôt dans Vaultic, **sans supprimer le répertoire, les données, les instantanés ou les clés du dépôt restic**. Après le retrait du dépôt actif, Vaultic choisit le dépôt suivant s'il existe et demande à nouveau son mot de passe.
+Dans **Dépôts**, les boutons **Modifier** et **Oublier** ne modifient que la liste locale de dépôts. Modifier change le nom affiché ou l'adresse enregistrée ; oublier retire le dépôt dans Vaultic, **sans supprimer le répertoire, les données, les instantanés ou les clés du dépôt restic**. Après le retrait du dépôt actif, Vaultic choisit le dépôt suivant s'il existe et demande à nouveau son mot de passe.
 
 Dans **Sauvegarde**, les boutons **Dupliquer…** et **Supprimer le profil…** gèrent les profils locaux. Une copie conserve indépendamment les sources et exclusions de l'original. Supprimer un profil ne supprime aucun instantané restic ; le dernier profil ne peut pas être supprimé.
 
@@ -99,7 +100,7 @@ Les nombres par catégorie sont calculés sur **l'ensemble** du diff restic, mai
 
 ## Types de stockage pris en charge
 
-Le sélecteur **Paramètres → Ajouter un dépôt → Type** présente les **neuf backends enregistrés** dans le moteur restic intégré : **local**, **SFTP**, **REST**, **S3**, **Backblaze B2**, **Azure Blob**, **Google Cloud Storage**, **OpenStack Swift** et **rclone**. Chaque sélection affiche un exemple d'adresse et les prérequis de connexion. Les adresses sont validées par le parseur restic réel.
+La page **Dépôts → Ajouter un dépôt** présente les **neuf backends enregistrés** dans le moteur restic intégré : **local**, **SFTP**, **REST**, **S3**, **Backblaze B2**, **Azure Blob**, **Google Cloud Storage**, **OpenStack Swift** et **rclone**. Chaque sélection affiche un exemple d'adresse et les prérequis de connexion. Les adresses sont validées par le parseur restic réel.
 
 - `local:` : dossiers, SSD, USB et NAS montés.
 - `sftp:` : serveur SSH (client SSH externe requis).
@@ -108,27 +109,43 @@ Le sélecteur **Paramètres → Ajouter un dépôt → Type** présente les **ne
 - `b2:`, `azure:`, `gs:`, `swift:` : stockage objet chez le fournisseur indiqué.
 - `rclone:` : remotes rclone (programme et configuration externes requis).
 
-**Important :** la prise en charge d'un backend par le moteur ne signifie pas qu'une connexion ou une authentification cloud est automatiquement configurée. Les identifiants et variables d'environnement nécessaires doivent être fournis par le système ou le fournisseur ; Vaultic ne stocke pas de clés cloud dans ses préférences. Le mot de passe du dépôt restic reste distinct.
+**Important :** la prise en charge d'un backend par le moteur ne signifie pas qu'une connexion ou une authentification cloud est automatiquement configurée. Les identifiants et variables d'environnement nécessaires doivent être fournis par le système ou le fournisseur ; Vaultic ne stocke aucune clé cloud dans ses préférences (voir la page Dépôts ci-dessous pour la saisie en mémoire de session). Le mot de passe du dépôt restic reste distinct.
 
 ### Chronologie et restauration ciblée
 
 La page **Instantanés** affiche maintenant une chronologie avec un marqueur de nouveau jour et des détails de taille quand ils ont été calculés. Depuis la comparaison **Avant / Après**, sélectionnez une ligne et choisissez **Ouvrir pour restaurer…** : Vaultic ouvre l'instantané approprié (avant pour les fichiers supprimés, après pour les ajouts ou modifications), dans son explorateur, avec le chemin déjà sélectionné lorsque le type de fichier est restaurable. Il faut encore **choisir un dossier de destination vide et confirmer** la restauration ; aucun fichier n'est remplacé automatiquement.
 
-## Assistants cloud : S3, B2 et Azure
+## Page Dépôts : connexion guidée aux neuf types de stockage
 
-Dans **Paramètres → Ajouter un dépôt**, sélectionnez S3/MinIO, Backblaze B2 ou Azure Blob et cliquez **Assistant cloud…**.
+La page **Dépôts** réunit un seul objectif : choisir, configurer et vérifier un dépôt.
 
-Le formulaire guide le choix d'un nom, du bucket/conteneur existant, du chemin et du mot de passe de chiffrement restic. Il accepte aussi, si nécessaire :
+1. **Type de stockage** : neuf cartes (local, SFTP, REST, S3, Backblaze B2, Azure Blob, Google Cloud, OpenStack Swift, rclone) navigables au clavier (Tab, flèches, Entrée ou Espace).
+2. **Emplacement** : un formulaire propre à chaque type, avec validation en ligne et un aperçu de l'adresse restic produite. Le port SSH est un champ dédié (forme `sftp://utilisateur@hôte:port//chemin`). Les adresses sont validées par le parseur restic réel et les valeurs dangereuses (hôte commençant par `-`, `..`, paramètres d'URL, identifiants dans l'URL) sont refusées.
+3. **Nom et mot de passe restic** : le mot de passe de chiffrement du dépôt reste distinct et n'est jamais enregistré.
 
-- **S3/MinIO** : endpoint HTTPS (hôte sans identifiants), région, Access Key ID et Secret Access Key.
-- **B2** : bucket, Account ID/Key ID et Application Key.
-- **Azure** : compte, conteneur, clé de compte ou jeton SAS.
+Boutons : **Tester la connexion**, **Ouvrir le dépôt existant**, **Créer un nouveau dépôt**. Les assistants pas à pas S3, B2 et Azure restent disponibles.
 
-Les boutons **Tester et ouvrir** et **Créer un dépôt** utilisent les fonctions Go du moteur restic intégré : le premier vérifie l'accès à un dépôt restic **déjà existant**, le second **initialise un dépôt restic** dans un bucket ou conteneur que vous avez préalablement créé et autorisé. Un compte cloud ne sera pas créé automatiquement. Une connexion réseau, les autorisations et des identifiants corrects restent nécessaires.
+### États de connexion
 
-**Sécurité :** la clé d'accès cloud n'est jamais intégrée à l'URL du dépôt, n'est pas écrite dans `vaultic.json`, n'est pas passée dans une commande CLI et n'est pas placée dans l'environnement global du processus. Elle reste dans la mémoire de Vaultic pour la durée de la session. Après redémarrage, utilisez **Configurer l'accès cloud du dépôt…** pour saisir à nouveau les clés du dépôt enregistré, ou comptez sur les identifiants cloud configurés dans l'environnement système. **Effacer les clés cloud de la session** retire immédiatement les clés mémorisées pour le dépôt actif. Le mot de passe de chiffrement restic reste distinct et n'est pas enregistré.
+*Non testé*, *Test en cours*, *Joignable*, *Authentification refusée*, *Dépôt indisponible* et *Connecté*. **Joignable** signifie seulement que le stockage répond et qu'un dépôt restic existe : sans mot de passe, Vaultic n'affiche jamais « Connecté ». Un mot de passe restic incorrect, des identifiants de stockage refusés, des droits insuffisants, une erreur réseau et l'absence de dépôt donnent des messages distincts. Chaque test a un délai maximal de 45 s et peut être annulé.
 
-Seuls S3, B2 et Azure disposent actuellement d'un formulaire cloud guidé ; les six autres backends restent accessibles par leur adresse restic et leur authentification native. Les connexions réelles à des comptes distants doivent être vérifiées manuellement avant un usage de production.
+### Identifiants (session uniquement)
+
+- REST (utilisateur et mot de passe du serveur), Google Cloud (ID de projet), S3, B2, Azure et **OpenStack Swift** (Keystone v3 : URL, région, domaines, projet, utilisateur et mot de passe, ou Application Credential) peuvent être saisis dans Vaultic.
+- Ils restent **en mémoire**, isolés par dépôt, sans variable d'environnement globale, sans sous-processus, et ne figurent ni dans l'adresse, ni dans `vaultic.json`, ni dans les journaux. Ils sont effacés à la fermeture.
+- Pour Swift, des identifiants saisis remplacent entièrement les variables `OS_*` du système ; champs vides = authentification système.
+- Google Cloud utilise uniquement les Application Default Credentials ; SFTP utilise votre agent/clé SSH ; rclone utilise sa propre configuration.
+
+### Liste des dépôts
+
+Chaque dépôt enregistré affiche son nom, son fournisseur, son emplacement (sans identifiants), la dernière vérification et les actions **Se connecter**, **Modifier**, **Tester** et **Oublier**. **Oublier** retire uniquement l'entrée de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance.
+
+### Limites connues
+
+- Les connexions cloud (S3, B2, Azure, GCS, Swift, rclone, SFTP) n'ont pas encore été validées contre de vrais services ; REST et Swift sont testés avec des serveurs simulés, le stockage local avec de vrais dépôts temporaires.
+- Le moteur restic **crée le conteneur Swift** s'il n'existe pas lors de l'ouverture, y compris pendant un test.
+- Swift : Keystone v3 uniquement ; Application Credential par ID.
+- Google Cloud : pas de saisie de clé dans Vaultic (ADC uniquement).
 
 ## Fonctionnalités en développement
 

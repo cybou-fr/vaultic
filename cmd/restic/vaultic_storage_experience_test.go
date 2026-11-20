@@ -428,8 +428,8 @@ func TestVaulticStorageSetupScreen(t *testing.T) {
 	ui.setField("path", "/srv/vaultic")
 	ui.name.SetText("Serveur")
 	ui.pass.SetText("pw")
-	if ui.problem.Text == "" || !ui.openBtn.Disabled() {
-		t.Fatal("invalid host must disable actions and show an inline message")
+	if !ui.openBtn.Disabled() || ui.control("host").(fyne.Validatable).Validate() == nil {
+		t.Fatal("invalid host must disable actions and show an inline error on the field")
 	}
 	ui.setField("host", "host.example")
 	ui.setField("port", "2222")

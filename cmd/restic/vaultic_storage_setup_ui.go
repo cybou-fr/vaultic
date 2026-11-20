@@ -214,6 +214,8 @@ type vaulticStorageSetupUI struct {
 	title       *canvas.Text
 	description *widget.Label
 	fieldBox    *fyne.Container
+	fields      []vaulticStorageField
+	items       map[string]*widget.FormItem
 	entries     map[string]fyne.CanvasObject
 	name, pass  *widget.Entry
 	preview     *widget.Label
@@ -353,14 +355,14 @@ func (u *vaulticStorageSetupUI) SetScheme(scheme string) {
 		u.wizardBtn.Hide()
 	}
 	u.entries = map[string]fyne.CanvasObject{}
-	u.fieldBox.Objects = nil
-	items := []*widget.FormItem{}
-	for _, f := range vaulticStorageFields(scheme) {
+	u.fields = vaulticStorageFields(scheme)
+	u.items = map[string]*widget.FormItem{}
+	for _, f := range u.fields {
 		field := f
 		var control fyne.CanvasObject
 		switch {
 		case len(field.Choices) > 0:
-			sel := widget.NewSelect(field.Choices, func(string) { u.refresh() })
+			sel := widget.NewSelect(field.Choices, func(string) { u.rebuildForm(); u.refresh() })
 			sel.SetSelected(field.Default)
 			control = sel
 		default:
@@ -383,11 +385,23 @@ func (u *vaulticStorageSetupUI) SetScheme(scheme string) {
 		u.entries[field.Key] = control
 		item := widget.NewFormItem(field.Label, control)
 		item.HintText = field.Help
-		items = append(items, item)
+		u.items[field.Key+"|"+field.Label] = item
 	}
-	u.fieldBox.Add(widget.NewForm(items...))
-	u.fieldBox.Refresh()
+	u.rebuildForm()
 	u.refresh()
+}
+
+// rebuildForm shows only the fields that apply to the current mode.
+func (u *vaulticStorageSetupUI) rebuildForm() {
+	values := u.values()
+	items := []*widget.FormItem{}
+	for _, f := range u.fields {
+		if item := u.items[f.Key+"|"+f.Label]; item != nil && vaulticFieldVisible(f, values) {
+			items = append(items, item)
+		}
+	}
+	u.fieldBox.Objects = []fyne.CanvasObject{widget.NewForm(items...)}
+	u.fieldBox.Refresh()
 }
 
 func (u *vaulticStorageSetupUI) control(key string) fyne.CanvasObject {
@@ -445,12 +459,35 @@ func (u *vaulticStorageSetupUI) refresh() {
 	setup, err := u.build(vaulticActionTest)
 	if err != nil {
 		u.preview.SetText("")
+		// A field the user already filled shows its own inline hint; only
+		// missing or cross-field problems need this summary line.
 		u.problem.SetText(err.Error())
+		if u.touchedFieldInvalid() {
+			u.problem.SetText("")
+		}
 	} else {
 		u.preview.SetText("Adresse : " + vaulticSafeLocation(setup.Address))
 		u.problem.SetText("")
 	}
 	u.updateButtons()
+}
+
+func (u *vaulticStorageSetupUI) touchedFieldInvalid() bool {
+	values := u.values()
+	if strings.TrimSpace(values["name"]) != "" && vaulticValidateSavedNameErr(values["name"]) != nil {
+		return true
+	}
+	for _, f := range u.fields {
+		if vaulticFieldVisible(f, values) && strings.TrimSpace(values[f.Key]) != "" && vaulticValidateStorageField(u.scheme, f.Key, values[f.Key]) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func vaulticValidateSavedNameErr(name string) error {
+	_, err := vaulticValidateSavedName(name)
+	return err
 }
 
 func (u *vaulticStorageSetupUI) updateButtons() {

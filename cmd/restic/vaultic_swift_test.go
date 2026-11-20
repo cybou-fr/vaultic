@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2/widget"
+
+	"fyne.io/fyne/v2/test"
 	"github.com/restic/restic/internal/backend/swift"
 	"github.com/restic/restic/internal/global"
 )
@@ -178,10 +181,17 @@ func TestVaulticSwiftFormBuildsSessionCredentials(t *testing.T) {
 		t.Fatal("credentials without Keystone URL accepted")
 	}
 	app, err := vaulticBuildStorageSetup("swift", guidedValues("Swift", map[string]string{
-		"bucket": "vault", "authurl": "https://auth.example/v3", "authmode": vaulticSwiftAppCredChoice, "username": "id123", "secret": "s",
+		"bucket": "vault", "authurl": "https://auth.example/v3", "authmode": vaulticSwiftAppCredChoice, "appid": "id123", "username": "ignored-user", "secret": "s",
 	}))
-	if err != nil || !app.Auth.AppCredential {
+	if err != nil || !app.Auth.AppCredential || app.Auth.AccessID != "id123" || app.Auth.Project != "" {
 		t.Fatalf("application credential: %v %+v", err, app.Auth)
+	}
+	for _, key := range []string{"project", "userdomain", "projectdomain", "username"} {
+		for _, f := range vaulticStorageFields("swift") {
+			if f.Key == key && f.ModeKey != "" && vaulticFieldVisible(f, map[string]string{"authmode": vaulticSwiftAppCredChoice}) {
+				t.Errorf("%s must be hidden in application credential mode", key)
+			}
+		}
 	}
 }
 
@@ -352,5 +362,47 @@ func TestVaulticSwiftSecretsNeverReachLogsOrSettings(t *testing.T) {
 	raw, _ := json.Marshal(vaulticDepot{Name: "Swift", Location: "swift:vault:/repo"})
 	if strings.Contains(string(raw), "swift-super-secret") || strings.Contains(string(raw), "auth.example") {
 		t.Fatalf("settings entry carries credentials: %s", raw)
+	}
+}
+
+func TestVaulticSwiftFormShowsFieldsForTheChosenMode(t *testing.T) {
+	test.NewTempApp(t)
+	u := vaulticNewStorageSetupUI(vaulticStorageSetupHooks{})
+	u.SetScheme("swift")
+	labels := func() string {
+		var out []string
+		for _, item := range u.fieldBox.Objects[0].(*widget.Form).Items {
+			out = append(out, item.Text)
+		}
+		return strings.Join(out, "|")
+	}
+	if got := labels(); !strings.Contains(got, "Projet") || !strings.Contains(got, "Domaine utilisateur") || strings.Contains(got, "Application Credential") {
+		t.Fatalf("password mode fields: %s", got)
+	}
+	u.control("authmode").(*widget.Select).SetSelected(vaulticSwiftAppCredChoice)
+	if got := labels(); strings.Contains(got, "Projet") || strings.Contains(got, "Domaine") || !strings.Contains(got, "ID de l'Application Credential") {
+		t.Fatalf("application credential mode fields: %s", got)
+	}
+	// Typed values survive a mode switch.
+	u.setField("authurl", "https://auth.example/v3")
+	u.control("authmode").(*widget.Select).SetSelected(vaulticSwiftPasswordChoice)
+	if u.values()["authurl"] != "https://auth.example/v3" {
+		t.Fatal("value lost when switching mode")
+	}
+}
+
+func TestVaulticSetupScreenDoesNotRepeatInlineErrors(t *testing.T) {
+	test.NewTempApp(t)
+	u := vaulticNewStorageSetupUI(vaulticStorageSetupHooks{})
+	u.SetScheme("gs")
+	u.setField("bucket", "bucket")
+	u.setField("prefix", "../x") // touched and invalid: the field shows its own hint
+	if u.problem.Text != "" || !u.openBtn.Disabled() {
+		t.Fatalf("summary must not repeat the inline error: %q", u.problem.Text)
+	}
+	u.setField("prefix", "ok")
+	u.setField("bucket", "") // required but untouched-style emptiness: the summary explains
+	if u.problem.Text == "" {
+		t.Fatal("missing required field must be explained")
 	}
 }

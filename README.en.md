@@ -26,7 +26,7 @@ The no-argument executable starts the desktop GUI. Existing restic-style CLI com
 
 ## Vaultic desktop interface
 
-The native Fyne UI now uses a midnight-blue theme, muted aqua accent, vector application icon, rounded panels and seven single-purpose sidebar destinations: **Overview, Backup, Snapshots, Storage, Integrity, Activity and Settings**. Snapshot file browsing uses the same visual language.
+The native Fyne UI now uses a midnight-blue theme, muted aqua accent, vector application icon, rounded panels and eight single-purpose sidebar destinations: **Overview, Backup, Snapshots, Storage, Integrity, Activity, Repositories and Settings**. Snapshot file browsing uses the same visual language.
 
 Dashboard figures are derived from current in-app data. When snapshots have not yet been loaded, their count is shown as unknown rather than implying the backups are verified. All restic operations remain in-process.
 
@@ -38,7 +38,7 @@ The **Storage** page runs restic's in-process `stats` in `raw-data` mode on dema
 
 ## Safe repository/profile management and exclusion preview
 
-**Settings → Active repository** allows renaming the *display label* or **removing a repository from Vaultic's saved list**. Neither operation deletes or modifies the actual restic repository, snapshots, keys or backup files. The selected repository is reset and a fresh password is required when switching after removal.
+On the **Repositories** page, **Edit** renames a saved repository or changes its location, and **Forget** **removes it from Vaultic's saved list**. Neither operation deletes or modifies the actual restic repository, snapshots, keys or backup files. The selected repository is reset and a fresh password is required when switching after removal.
 
 **Backup** supports duplicating a profile (with separate source and exclude lists) or deleting its local configuration. The last profile is protected; no restic snapshots are removed.
 
@@ -58,9 +58,9 @@ Category totals reflect the **entire native restic diff**, while only the first 
 
 ## Supported backup storage backends
 
-The **Settings → Add repository → Type** selector exposes the **nine backends registered in the embedded restic engine**: local, SFTP, REST, S3-compatible storage, Backblaze B2, Azure Blob Storage, Google Cloud Storage, OpenStack Swift and rclone. Each selection provides a sample repository address and connection requirements, and validation uses restic's original location parser.
+The **Repositories → Add repository** page exposes the **nine backends registered in the embedded restic engine**: local, SFTP, REST, S3-compatible storage, Backblaze B2, Azure Blob Storage, Google Cloud Storage, OpenStack Swift and rclone. Each selection provides a sample repository address and connection requirements, and validation uses restic's original location parser.
 
-SFTP requires an external SSH client; rclone requires an external installed and configured rclone program. All other registered backends are provided as Go libraries within the engine, though remote storage naturally requires network access and suitable credentials. Cloud credentials should be configured externally through the provider and supported environment variables; Vaultic does not store cloud API keys in settings. The restic repository password is separate.
+SFTP requires an external SSH client; rclone requires an external installed and configured rclone program. All other registered backends are provided as Go libraries within the engine, though remote storage naturally requires network access and suitable credentials. Cloud credentials should be configured externally through the provider and supported environment variables; Vaultic never stores cloud API keys in settings (see the Repositories page below for in-memory session entry). The restic repository password is separate.
 
 ### Timeline and guided file restoration
 
@@ -68,15 +68,37 @@ The **Snapshots** page groups entries by day on a visual timeline. Size and file
 
 From the **Before / After** comparison window, select a changed path and click **Ouvrir pour restaurer…** to open the appropriate snapshot in the file explorer. Removed files open the *Before* snapshot; additions and modifications open the *After* snapshot. The file is preselected when its type permits restoration. The user must still choose an empty destination and confirm the restore. Existing files are never deliberately overwritten.
 
-## Guided cloud connection: S3, B2 and Azure
+## Repositories page: guided setup for all nine storage types
 
-In **Settings → Add repository**, select S3/MinIO, Backblaze B2 or Azure Blob and open **Assistant cloud…**. The guided form covers bucket/container, optional path prefix, repository encryption password, and provider credentials when needed. S3 supports a TLS endpoint and optional region; B2 supports Account ID/Application Key; Azure supports an account key or SAS token.
+The **Repositories** page has a single purpose: choose, configure and verify a repository.
 
-**Test and open** verifies an existing restic repository using the embedded Go engine. **Create repository** initializes a new restic repository inside a pre-existing and accessible bucket/container; it does not create a provider account or bucket.
+1. **Storage type**: nine cards (local, SFTP, REST, S3, Backblaze B2, Azure Blob, Google Cloud, OpenStack Swift, rclone) with keyboard navigation (Tab, arrows, Enter or Space).
+2. **Location**: a form specific to each type, with inline validation and a preview of the restic address it produces. The SSH port is a dedicated field (`sftp://user@host:port//path` form). Addresses are checked by the real restic parser, and dangerous values (host starting with `-`, `..`, URL parameters, credentials inside the URL) are refused.
+3. **Name and restic password**: the repository encryption password stays separate and is never saved.
 
-Cloud keys are **session-only**: they are passed to a per-operation backend factory, never placed into repository URLs, `vaultic.json`, a global process environment variable, or an external restic subprocess. After restart, use **Configure cloud access for active repository** to re-enter credentials, or use already-configured system authentication. You can clear session cloud credentials for the active repository at any time. The restic encryption password is always separate and is not saved.
+Buttons: **Test connection**, **Open existing repository**, **Create new repository**. The step-by-step S3, B2 and Azure assistants remain available.
 
-These three backends have guided forms; the other registered backends continue to use their native restic addresses and provider/system authentication. Network connectivity and production verification are still required.
+### Connection states
+
+*Not tested*, *Testing*, *Reachable*, *Authentication failed*, *Repository unavailable* and *Connected*. **Reachable** only means the storage answered and a restic repository exists: without the password Vaultic never reports "Connected". A wrong restic password, refused storage credentials, insufficient rights, a network error and a missing repository each produce distinct messages. Every test has a 45 s timeout and can be cancelled.
+
+### Credentials (session only)
+
+- REST (server user and password), Google Cloud (project ID), S3, B2, Azure and **OpenStack Swift** (Keystone v3: URL, region, domains, project, user and password, or an Application Credential) can be entered in Vaultic.
+- They stay **in memory**, isolated per repository, with no global environment variable and no subprocess, and never appear in the address, `vaultic.json` or logs. They are wiped when Vaultic closes.
+- For Swift, credentials entered here fully replace the system `OS_*` variables; empty fields mean system authentication.
+- Google Cloud uses Application Default Credentials only; SFTP uses your SSH agent/key; rclone uses its own configuration.
+
+### Repository list
+
+Each saved repository shows its name, provider, location (without credentials), last verification, and the actions **Connect**, **Edit**, **Test** and **Forget**. **Forget** only removes the entry from Vaultic: no backup is deleted, locally or remotely.
+
+### Known limitations
+
+- Cloud connections (S3, B2, Azure, GCS, Swift, rclone, SFTP) have not yet been validated against real services; REST and Swift are tested with mock servers and local storage with real temporary repositories.
+- The restic engine **creates the Swift container** when it does not exist on open, including during a test.
+- Swift: Keystone v3 only; Application Credentials by ID.
+- Google Cloud: no key entry in Vaultic (ADC only).
 
 ## Manual tests
 
