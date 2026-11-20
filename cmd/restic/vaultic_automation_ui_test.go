@@ -64,6 +64,7 @@ func newAutomationFixture(t *testing.T) *automationFixture {
 		Paused: func() bool { return f.paused }, SetPaused: func(p bool) { f.paused = p; f.resumed++ },
 		Notify: func() vaulticNotifyPrefs { return f.prefs }, SetNotify: func(p vaulticNotifyPrefs) { f.prefs = p },
 		Coordinator: f.coord, History: f.history, Now: func() time.Time { return f.now },
+		ActiveRepository: func() string { return "local:/repo" },
 		Credentials: func() bool { return f.creds }, Location: func() *time.Location { return loc },
 	})
 	return f
@@ -187,8 +188,8 @@ func TestVaulticAutomationSummaryTexts(t *testing.T) {
 	f.paused = false
 
 	// A success appears as the last successful backup; failures do not.
-	_ = f.history.Append(vaulticRunRecord{ID: "1", Profile: "Documents", Status: vaulticStatusSuccess, SnapshotID: "abcdef0123456789", Ended: at(f.loc, 2026, time.June, 10, 2, 31), Started: at(f.loc, 2026, time.June, 10, 2, 30)})
-	_ = f.history.Append(vaulticRunRecord{ID: "2", Profile: "Documents", Status: vaulticStatusFailure, Summary: "échec", Ended: at(f.loc, 2026, time.June, 11, 2, 31), Started: at(f.loc, 2026, time.June, 11, 2, 30)})
+	_ = f.history.Append(vaulticRunRecord{ID: "1", Profile: "Documents", Repository: "local:/repo", Status: vaulticStatusSuccess, SnapshotID: "abcdef0123456789", Ended: at(f.loc, 2026, time.June, 10, 2, 31), Started: at(f.loc, 2026, time.June, 10, 2, 30)})
+	_ = f.history.Append(vaulticRunRecord{ID: "2", Profile: "Documents", Repository: "local:/repo", Status: vaulticStatusFailure, Summary: "échec", Ended: at(f.loc, 2026, time.June, 11, 2, 31), Started: at(f.loc, 2026, time.June, 11, 2, 30)})
 	sum = vaulticSummarize(f.ui.hooks)
 	if !strings.Contains(sum.LastSuccess, "10 juin 2026 à 02:31") || !strings.Contains(sum.LastSuccess, "abcdef01") {
 		t.Fatalf("last success: %q", sum.LastSuccess)
@@ -241,7 +242,7 @@ func TestVaulticAutomationHistoryListShowsRecentRuns(t *testing.T) {
 		if i%4 == 2 {
 			status = vaulticStatusSkipped
 		}
-		_ = f.history.Append(vaulticRunRecord{ID: string(rune('a' + i)), Profile: "Documents", Status: status, Trigger: vaulticTriggerScheduled, Started: f.now.Add(time.Duration(i) * time.Minute), Ended: f.now.Add(time.Duration(i) * time.Minute), SnapshotID: "0123456789abcdef"})
+		_ = f.history.Append(vaulticRunRecord{ID: string(rune('a' + i)), Profile: "Documents", Repository: "local:/repo", Status: status, Trigger: vaulticTriggerScheduled, Started: f.now.Add(time.Duration(i) * time.Minute), Ended: f.now.Add(time.Duration(i) * time.Minute), SnapshotID: "0123456789abcdef"})
 	}
 	_ = f.history.Append(vaulticRunRecord{ID: "z", Profile: "Autre profil", Status: vaulticStatusSuccess})
 	f.ui.Refresh()
@@ -264,11 +265,11 @@ func TestVaulticCaptureAutomationScreens(t *testing.T) {
 	f.profile.Schedule = &vaulticSchedule{Kind: vaulticScheduleWeekly, Enabled: true, Time: "20:00", Weekdays: []int{1, 4}, LastSlot: at(f.loc, 2026, time.June, 8, 20, 0).Format(time.RFC3339)}
 	base := f.now.Add(-6 * 24 * time.Hour)
 	records := []vaulticRunRecord{
-		{ID: "1", Profile: "Documents", Trigger: vaulticTriggerScheduled, Status: vaulticStatusSuccess, Files: 1284, Bytes: 734003200, SnapshotID: "4a5b6c7d8e9f0011", DurationMs: 83000},
-		{ID: "2", Profile: "Documents", Trigger: vaulticTriggerManual, Status: vaulticStatusSuccess, Files: 12, Bytes: 3400000, SnapshotID: "99aabbccddeeff00", DurationMs: 4200},
-		{ID: "3", Profile: "Documents", Trigger: vaulticTriggerScheduled, Status: vaulticStatusSkipped, Summary: "Mot de passe du dépôt non disponible : la sauvegarde planifiée attend."},
-		{ID: "4", Profile: "Documents", Trigger: vaulticTriggerScheduled, CatchUp: true, Status: vaulticStatusFailure, DurationMs: 2100, Summary: "Dépôt inaccessible : le disque externe n'est pas branché."},
-		{ID: "5", Profile: "Documents", Trigger: vaulticTriggerManual, Status: vaulticStatusCancelled, DurationMs: 9000, Summary: "Interrompue avant la fin ; aucun instantané confirmé."},
+		{ID: "1", Profile: "Documents", Repository: "local:/repo", Trigger: vaulticTriggerScheduled, Status: vaulticStatusSuccess, Files: 1284, Bytes: 734003200, SnapshotID: "4a5b6c7d8e9f0011", DurationMs: 83000},
+		{ID: "2", Profile: "Documents", Repository: "local:/repo", Trigger: vaulticTriggerManual, Status: vaulticStatusSuccess, Files: 12, Bytes: 3400000, SnapshotID: "99aabbccddeeff00", DurationMs: 4200},
+		{ID: "3", Profile: "Documents", Repository: "local:/repo", Trigger: vaulticTriggerScheduled, Status: vaulticStatusSkipped, Summary: "Mot de passe du dépôt non disponible : la sauvegarde planifiée attend."},
+		{ID: "4", Profile: "Documents", Repository: "local:/repo", Trigger: vaulticTriggerScheduled, CatchUp: true, Status: vaulticStatusFailure, DurationMs: 2100, Summary: "Dépôt inaccessible : le disque externe n'est pas branché."},
+		{ID: "5", Profile: "Documents", Repository: "local:/repo", Trigger: vaulticTriggerManual, Status: vaulticStatusCancelled, DurationMs: 9000, Summary: "Interrompue avant la fin ; aucun instantané confirmé."},
 	}
 	for i, r := range records {
 		r.Started = base.Add(time.Duration(i) * 24 * time.Hour)
