@@ -188,7 +188,7 @@ func vaulticMain() {
 	w.SetMaster()
 
 	saved, settingsErr := vaulticLoadSettings()
-	profileIndex := saved.migrateBackupProfiles()
+	initialProfile := saved.migrateBackupProfiles()
 	// Migrate existing schedules once: their old implicit destination was
 	// the active repository. Subsequent changes must not silently retarget it.
 	for i := range saved.Profiles {
@@ -203,11 +203,10 @@ func vaulticMain() {
 			}
 		}
 	}
-	sources := saved.Profiles[profileIndex].Sources
 	var snapshots []vaulticSnapshot
 	snapshotMetricsCache := make(map[string]vaulticSnapshotMetrics)
-	selectedSource, selectedSnapshot := -1, -1
-	sourceCountValue := vaulticHeading(fmt.Sprintf("%d", len(sources)), 24)
+	selectedSnapshot := -1
+	var profiles *vaulticProfilesController
 	snapshotCountValue := vaulticHeading("—", 24)
 	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	recentRunValue.Truncation = fyne.TextTruncateEllipsis
@@ -266,20 +265,20 @@ func vaulticMain() {
 		if settingsErr != nil {
 			return settingsErr
 		}
-		profiles := make([]vaulticBackupProfile, len(saved.Profiles))
+		stored := make([]vaulticBackupProfile, len(saved.Profiles))
 		for i, profile := range saved.Profiles {
 			storedSources := make([]string, len(profile.Sources))
 			for j, source := range profile.Sources {
 				storedSources[j] = vaulticPortablePath(source)
 			}
-			profiles[i] = vaulticBackupProfile{
+			stored[i] = vaulticBackupProfile{
 				Name: profile.Name, Sources: storedSources, Excludes: append([]string(nil), profile.Excludes...),
 				Schedule: vaulticCloneSchedule(profile.Schedule),
 			}
 		}
 		return vaulticSaveSettings(vaulticSettings{
-			Repository: active, Depots: depots, Sources: profiles[profileIndex].Sources,
-			Profiles: profiles, ActiveProfile: profiles[profileIndex].Name,
+			Repository: active, Depots: depots, Sources: stored[profiles.Index()].Sources,
+			Profiles: stored, ActiveProfile: stored[profiles.Index()].Name,
 			SchedulerPaused: saved.SchedulerPaused, Notifications: saved.Notifications,
 		})
 	}
@@ -835,277 +834,28 @@ func vaulticMain() {
 		},
 	}
 
-	sourcesEmpty := vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
-	sourcesList := widget.NewList(
-		func() int { return len(sources) },
-		vaulticListLabel,
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			if id >= 0 && id < len(sources) {
-				obj.(*widget.Label).SetText(sources[id])
+	profiles = newVaulticProfilesController(&saved, initialProfile, vaulticProfilesHooks{
+		Window:        w,
+		Persist:       func() error { return persist(saved.Depots, activeRepository) },
+		Busy:          busy.Load,
+		Log:           appendLog,
+		UpdateActions: func() { updateActions() },
+		Changed: func() {
+			if automationUI != nil {
+				automationUI.Load()
 			}
 		},
-	)
-	sourcePath := widget.NewLabel("")
-	sourcesList.OnSelected = func(id widget.ListItemID) {
-		if id < 0 || id >= len(sources) {
-			return
-		}
-		selectedSource = id
-		sourcePath.SetText(sources[id])
-		updateActions()
-	}
-	sourcesList.OnUnselected = func(id widget.ListItemID) {
-		if selectedSource == id {
-			selectedSource = -1
-			sourcePath.SetText("")
-			updateActions()
-		}
-	}
-	refreshSources := func() {
-		sourcesList.Refresh()
-		sourceCountValue.Text = fmt.Sprintf("%d", len(sources))
-		sourceCountValue.Refresh()
-		updateActions()
-	}
-	updateSources := func(next []string) {
-		previous := sources
-		saved.Profiles[profileIndex].Sources = next
-		if err := persist(saved.Depots, activeRepository); err != nil {
-			saved.Profiles[profileIndex].Sources = previous
-			dialog.ShowError(err, w)
-			return
-		}
-		sourcesList.UnselectAll()
-		sources = next
-		refreshSources()
-	}
-	addFolder := widget.NewButton("+ Dossier", func() {
-		dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
+		Renamed: func(oldName, newName string) {
+			if err := historyStore.RenameProfile(oldName, newName); err != nil {
+				appendLog("Historique : " + err.Error())
 			}
-			if uri != nil {
-				updateSources(vaulticAppendUnique(sources, uri.Path()))
+			if automationUI != nil {
+				automationUI.Refresh()
 			}
-		}, w).Show()
-	})
-	addFile := widget.NewButton("+ Fichier", func() {
-		dialog.NewFileOpen(func(f fyne.URIReadCloser, err error) {
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			if f != nil {
-				path := f.URI().Path()
-				_ = f.Close()
-				updateSources(vaulticAppendUnique(sources, path))
-			}
-		}, w).Show()
-	})
-	removeSource := widget.NewButton("Retirer", func() {
-		if selectedSource < 0 || selectedSource >= len(sources) {
-			return
-		}
-		next := append([]string(nil), sources[:selectedSource]...)
-		next = append(next, sources[selectedSource+1:]...)
-		updateSources(next)
-	})
-	profileSelect := widget.NewSelect(nil, nil)
-	exclusionSummary := widget.NewLabel("Aucune exclusion")
-	refreshProfiles := func() {
-		if automationUI != nil {
-			defer automationUI.Load()
-		}
-		names := make([]string, len(saved.Profiles))
-		for i, profile := range saved.Profiles {
-			names[i] = profile.Name
-		}
-		profileSelect.SetOptions(names)
-		if profileSelect.Selected != names[profileIndex] {
-			profileSelect.SetSelected(names[profileIndex])
-		}
-		if count := len(saved.Profiles[profileIndex].Excludes); count > 0 {
-			exclusionSummary.SetText(fmt.Sprintf("%d exclusion(s)", count))
-		} else {
-			exclusionSummary.SetText("Aucune exclusion")
-		}
-	}
-	applyProfiles := func(next []vaulticBackupProfile, index int) bool {
-		previousProfiles, previousIndex := saved.Profiles, profileIndex
-		saved.Profiles, profileIndex = next, index
-		if err := persist(saved.Depots, activeRepository); err != nil {
-			saved.Profiles, profileIndex = previousProfiles, previousIndex
-			refreshProfiles()
-			dialog.ShowError(err, w)
-			return false
-		}
-		sourcesList.UnselectAll()
-		sources = saved.Profiles[profileIndex].Sources
-		refreshProfiles()
-		refreshSources()
-		return true
-	}
-	profileSelect.OnChanged = func(name string) {
-		for index, profile := range saved.Profiles {
-			if profile.Name == name && index != profileIndex {
-				applyProfiles(saved.Profiles, index)
-				return
-			}
-		}
-	}
-	editProfile := func(create bool) {
-		title := "Renommer le profil"
-		name := widget.NewEntry()
-		if create {
-			title = "Nouveau profil"
-		} else {
-			name.SetText(saved.Profiles[profileIndex].Name)
-		}
-		form := dialog.NewForm(title, "Enregistrer", "Annuler", []*widget.FormItem{
-			widget.NewFormItem("Nom", name),
-		}, func(ok bool) {
-			if !ok {
-				return
-			}
-			label := strings.TrimSpace(name.Text)
-			if label == "" || len([]rune(label)) > 40 {
-				dialog.ShowInformation("Nom du profil", "Saisissez un nom de 1 à 40 caractères.", w)
-				return
-			}
-			for i, profile := range saved.Profiles {
-				if strings.EqualFold(profile.Name, label) && (create || i != profileIndex) {
-					dialog.ShowInformation("Nom déjà utilisé", "Choisissez un autre nom pour ce profil.", w)
-					return
-				}
-			}
-			next := append([]vaulticBackupProfile(nil), saved.Profiles...)
-			index := profileIndex
-			if create {
-				index = len(next)
-				next = append(next, vaulticBackupProfile{Name: label})
-			} else {
-				oldName := next[index].Name
-				next[index].Name = label
-				if applyProfiles(next, index) && oldName != label {
-					if err := historyStore.RenameProfile(oldName, label); err != nil {
-						appendLog("Historique : " + err.Error())
-					}
-					if automationUI != nil {
-						automationUI.Refresh()
-					}
-				}
-				return
-			}
-			applyProfiles(next, index)
-		}, w)
-		form.Show()
-		w.Canvas().Focus(name)
-	}
-	newProfileButton := widget.NewButton("Nouveau…", func() { editProfile(true) })
-	renameProfileButton := widget.NewButton("Renommer…", func() { editProfile(false) })
-	duplicateProfileButton := widget.NewButtonWithIcon("Dupliquer…", theme.ContentCopyIcon(), func() {
-		from := profileIndex
-		field := widget.NewEntry()
-		field.SetText(vaulticSuggestedCopyName(saved.Profiles, from))
-		dialog.NewForm("Dupliquer le profil", "Dupliquer", "Annuler", []*widget.FormItem{
-			widget.NewFormItem("Nom de la copie", field),
-		}, func(ok bool) {
-			if !ok || busy.Load() || from != profileIndex {
-				return
-			}
-			updated, index, err := vaulticDuplicateSavedProfile(saved.Profiles, from, field.Text)
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			if applyProfiles(updated, index) {
-				appendLog("Profil dupliqué (sources et exclusions copiées).")
-			}
-		}, w).Show()
-		w.Canvas().Focus(field)
-	})
-	deleteProfileButton := widget.NewButtonWithIcon("Supprimer le profil…", theme.DeleteIcon(), func() {
-		if len(saved.Profiles) <= 1 {
-			return
-		}
-		target := profileIndex
-		name := saved.Profiles[target].Name
-		dialog.ShowConfirm("Supprimer le profil",
-			"Supprimer uniquement le profil « "+name+" » de Vaultic ?\n\nLes dépôts restic et les sauvegardes existantes ne seront pas modifiés.",
-			func(ok bool) {
-				if !ok || busy.Load() || target != profileIndex {
-					return
-				}
-				updated, index, err := vaulticDeleteSavedProfile(saved.Profiles, target)
-				if err != nil {
-					dialog.ShowError(err, w)
-					return
-				}
-				if applyProfiles(updated, index) {
-					appendLog("Profil supprimé de la configuration : " + name + " (snapshots inchangés).")
-				}
-			}, w)
-	})
-	exclusionsButton := widget.NewButtonWithIcon("Exclusions…", theme.ContentRemoveIcon(), func() {
-		targetProfile := profileIndex
-		editor := widget.NewMultiLineEntry()
-		editor.SetMinRowsVisible(10)
-		editor.Wrapping = fyne.TextWrapWord
-		editor.SetPlaceHolder("**/node_modules\n**/.cache\n*.tmp")
-		editor.SetText(strings.Join(saved.Profiles[targetProfile].Excludes, "\n"))
-		explanation := vaulticWrappedLabel("Une règle restic par ligne. Les lignes vides ou commençant par # sont ignorées. Des exceptions peuvent commencer par !. Les exclusions ne concernent que ce profil.")
-		scroll := container.NewVScroll(editor)
-		scroll.SetMinSize(fyne.NewSize(500, 290))
-		content := container.NewBorder(explanation, nil, nil, nil, scroll)
-		dialog.NewCustomConfirm("Exclusions du profil", "Enregistrer", "Annuler", content, func(ok bool) {
-			if !ok {
-				return
-			}
-			if targetProfile != profileIndex {
-				dialog.ShowInformation("Profil modifié", "Sélectionnez à nouveau le profil avant de modifier ses exclusions.", w)
-				return
-			}
-			rules, err := vaulticParseExclusions(editor.Text)
-			if err != nil {
-				dialog.ShowError(err, w)
-				return
-			}
-			next := append([]vaulticBackupProfile(nil), saved.Profiles...)
-			next[targetProfile].Excludes = rules
-			applyProfiles(next, targetProfile)
-		}, w).Show()
-	})
-	previewExclusionsButton := widget.NewButtonWithIcon("Aperçu des exclusions…", theme.SearchIcon(), func() {
-		if len(sources) == 0 {
-			dialog.ShowInformation("Sources manquantes", "Ajoutez d'abord un dossier ou un fichier au profil.", w)
-			return
-		}
-		rules := append([]string(nil), saved.Profiles[profileIndex].Excludes...)
-		if len(rules) == 0 {
-			dialog.ShowInformation("Aucune exclusion", "Ajoutez des règles d'exclusion pour ce profil avant de lancer un aperçu.", w)
-			return
-		}
-		selected := append([]string(nil), sources...)
-		var result vaulticExclusionPreview
-		runWithDepot("Aperçu des exclusions", activeRepository, passEntry.Text, false,
-			func(ctx context.Context, g global.Options) error {
-				cleaned, err := vaulticSourcesForBackup(g.Repo, selected)
-				if err != nil {
-					return err
-				}
-				result, err = vaulticPreviewExcludedPaths(ctx, cleaned, rules)
-				return err
-			},
-			func() error {
-				details := vaulticWrappedLabel(vaulticFormatExclusionPreview(result))
-				content := container.NewVScroll(details)
-				content.SetMinSize(fyne.NewSize(560, 340))
-				dlg := dialog.NewCustom("Aperçu indicatif des exclusions", "Fermer", content, w)
-				dlg.Resize(fyne.NewSize(640, 440))
-				dlg.Show()
-				return nil
-			}, nil)
+		},
+		RunWithDepot: func(title string, fn func(context.Context, global.Options) error, done func() error) {
+			runWithDepot(title, activeRepository, passEntry.Text, false, fn, done, nil)
+		},
 	})
 	// Every backup, manual or scheduled, goes through the coordinator: one
 	// engine operation at a time, one history, one set of notifications.
@@ -1182,7 +932,7 @@ func vaulticMain() {
 		return true
 	}
 	backupButton := widget.NewButton("Sauvegarder maintenant", func() {
-		launchBackup(vaulticTriggerManual, saved.Profiles[profileIndex].Name, time.Time{}, false)
+		launchBackup(vaulticTriggerManual, profiles.Current().Name, time.Time{}, false)
 	})
 	// UI-owned settings are changed on the Fyne thread. A worker waits until
 	// persistence finishes, so the slot is durable before releasing the gate.
@@ -1264,10 +1014,6 @@ func vaulticMain() {
 	}()
 	backupReportButton := widget.NewButton("Dernier rapport…", showBackupReport)
 	backupButton.Importance = widget.HighImportance
-	sourceSection := container.NewBorder(
-		container.NewVBox(widget.NewLabelWithStyle("Sources", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), container.NewHBox(addFolder, addFile, removeSource)),
-		container.NewHScroll(sourcePath), nil, nil, container.NewStack(sourcesList, sourcesEmpty),
-	)
 
 	snapshotList := widget.NewList(
 		func() int { return len(snapshots) },
@@ -1521,12 +1267,12 @@ func vaulticMain() {
 		})
 	})
 
-	actionButtons = []*widget.Button{verifyButton, cloudAuthEditorButton, clearCloudAuthButton, addFolder, addFile, refreshButton, checkButton, storageButton, newProfileButton, renameProfileButton, duplicateProfileButton, deleteProfileButton, exclusionsButton, previewExclusionsButton}
+	actionButtons = []*widget.Button{verifyButton, cloudAuthEditorButton, clearCloudAuthButton, profiles.AddFolder, profiles.AddFile, refreshButton, checkButton, storageButton, profiles.New, profiles.Rename, profiles.Duplicate, profiles.Delete, profiles.Exclusions, profiles.Preview}
 	updateActions = func() {
-		if len(sources) == 0 {
-			sourcesEmpty.Show()
+		if len(profiles.Sources()) == 0 {
+			profiles.Empty.Show()
 		} else {
-			sourcesEmpty.Hide()
+			profiles.Empty.Hide()
 		}
 		if len(snapshots) == 0 {
 			snapshotEmpty.Show()
@@ -1538,14 +1284,14 @@ func vaulticMain() {
 		} else {
 			snapshotEmptyLabel.SetText("Actualisez l’historique pour afficher les instantanés du dépôt.")
 		}
-		vaulticSetButtonEnabled(backupButton, !busy.Load() && len(sources) > 0)
+		vaulticSetButtonEnabled(backupButton, !busy.Load() && len(profiles.Sources()) > 0)
 		vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
-		vaulticSetButtonEnabled(exclusionsButton, !busy.Load())
-		vaulticSetButtonEnabled(previewExclusionsButton, !busy.Load() && len(sources) > 0 && len(saved.Profiles[profileIndex].Excludes) > 0)
-		vaulticSetButtonEnabled(duplicateProfileButton, !busy.Load())
-		vaulticSetButtonEnabled(deleteProfileButton, !busy.Load() && len(saved.Profiles) > 1)
+		vaulticSetButtonEnabled(profiles.Exclusions, !busy.Load())
+		vaulticSetButtonEnabled(profiles.Preview, !busy.Load() && len(profiles.Sources()) > 0 && len(profiles.Current().Excludes) > 0)
+		vaulticSetButtonEnabled(profiles.Duplicate, !busy.Load())
+		vaulticSetButtonEnabled(profiles.Delete, !busy.Load() && len(saved.Profiles) > 1)
 		vaulticSetButtonEnabled(storageButton, !busy.Load() && activeRepository != "")
-		vaulticSetButtonEnabled(removeSource, !busy.Load() && selectedSource >= 0)
+		vaulticSetButtonEnabled(profiles.RemoveSource, !busy.Load() && profiles.Selected() >= 0)
 		canRestore := !busy.Load() && selectedSnapshot >= 0
 		vaulticSetButtonEnabled(explorerButton, canRestore)
 		vaulticSetButtonEnabled(restoreButton, canRestore)
@@ -1557,9 +1303,9 @@ func vaulticMain() {
 		vaulticSetButtonEnabled(cloudAuthEditorButton, !busy.Load() && hasCloudEditor)
 		vaulticSetButtonEnabled(clearCloudAuthButton, !busy.Load() && activeRepository != "" && cloudSessions.get(activeRepository).hasSecret())
 		if busy.Load() {
-			profileSelect.Disable()
+			profiles.Select.Disable()
 		} else {
-			profileSelect.Enable()
+			profiles.Select.Enable()
 		}
 		for _, b := range repoRowButtons {
 			vaulticSetButtonEnabled(b, !busy.Load())
@@ -1652,7 +1398,7 @@ func vaulticMain() {
 	viewSnapshots := widget.NewButtonWithIcon("Voir les instantanés", theme.HistoryIcon(), nil)
 	viewStorage := widget.NewButtonWithIcon("Espace de stockage", theme.StorageIcon(), nil)
 	overviewPage := vaulticOverviewPage(vaulticOverviewParts{
-		SourceCount: sourceCountValue, SnapshotCount: snapshotCountValue, Repository: repoValue,
+		SourceCount: profiles.CountValue, SnapshotCount: snapshotCountValue, Repository: repoValue,
 		RecentRun: recentRunValue, RecentSnapshot: recentSnapshotValue,
 		StartBackup: startBackup, Setup: setupButton, ViewSnapshots: viewSnapshots, ViewStorage: viewStorage,
 	})
@@ -1662,16 +1408,16 @@ func vaulticMain() {
 		Setup: setupUI.Content,
 	})
 	automationUI = newVaulticAutomationUI(vaulticAutomationHooks{
-		Profile: func() vaulticBackupProfile { return saved.Profiles[profileIndex] },
+		Profile: func() vaulticBackupProfile { return profiles.Current() },
 		SetSchedule: func(schedule vaulticSchedule) error {
-			next, err := vaulticApplySchedule(saved.Profiles, profileIndex, schedule, activeRepository, time.Now())
+			next, err := vaulticApplySchedule(saved.Profiles, profiles.Index(), schedule, activeRepository, time.Now())
 			if err != nil {
 				return err
 			}
-			if !applyProfiles(next, profileIndex) {
+			if !profiles.Apply(next, profiles.Index()) {
 				return errors.New("Enregistrement impossible : consultez le message affiché.")
 			}
-			appendLog("Planification du profil « " + next[profileIndex].Name + " » : " + schedule.Describe())
+			appendLog("Planification du profil « " + next[profiles.Index()].Name + " » : " + schedule.Describe())
 			return nil
 		},
 		Paused: func() bool { return saved.SchedulerPaused },
@@ -1699,10 +1445,10 @@ func vaulticMain() {
 		Location:         func() *time.Location { return time.Local },
 	})
 	backupPage, automationScroll := vaulticBackupPage(vaulticBackupParts{
-		Profile: profileSelect, NewProfile: newProfileButton, RenameProfile: renameProfileButton,
-		DuplicateProfile: duplicateProfileButton, DeleteProfile: deleteProfileButton,
-		Exclusions: exclusionsButton, PreviewExclusions: previewExclusionsButton, ExclusionSummary: exclusionSummary,
-		Sources: sourceSection, BackupNow: backupButton, LastReport: backupReportButton,
+		Profile: profiles.Select, NewProfile: profiles.New, RenameProfile: profiles.Rename,
+		DuplicateProfile: profiles.Duplicate, DeleteProfile: profiles.Delete,
+		Exclusions: profiles.Exclusions, PreviewExclusions: profiles.Preview, ExclusionSummary: profiles.ExclusionSummary,
+		Sources: profiles.Section, BackupNow: backupButton, LastReport: backupReportButton,
 	}, automationUI.Content)
 	snapshotPage := vaulticSnapshotPage(vaulticSnapshotParts{
 		Refresh: refreshButton, Details: snapshotDetailsScroll,
@@ -1734,7 +1480,7 @@ func vaulticMain() {
 	}
 	windowContent = container.NewBorder(nil, container.NewPadded(statusBar), nav.Sidebar, nil, nav.Pages)
 	refreshDepots()
-	refreshProfiles()
+	profiles.Refresh()
 	w.SetContent(windowContent)
 	w.SetCloseIntercept(func() {
 		if closing || closePrompt {
