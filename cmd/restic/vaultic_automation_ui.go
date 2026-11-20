@@ -41,18 +41,18 @@ var vaulticHourChoices = []string{"1", "2", "3", "4", "6", "8", "12", "24", "48"
 // vaulticAutomationHooks connects the Automatisation section to the program.
 // Every function runs on the interface thread.
 type vaulticAutomationHooks struct {
-	Profile     func() vaulticBackupProfile
-	SetSchedule func(vaulticSchedule) error
-	Paused      func() bool
-	SetPaused   func(bool)
-	Notify      func() vaulticNotifyPrefs
-	SetNotify   func(vaulticNotifyPrefs)
-	Coordinator *vaulticCoordinator
-	History     *vaulticHistoryStore
-	Now         func() time.Time
-	Credentials func() bool
+	Profile          func() vaulticBackupProfile
+	SetSchedule      func(vaulticSchedule) error
+	Paused           func() bool
+	SetPaused        func(bool)
+	Notify           func() vaulticNotifyPrefs
+	SetNotify        func(vaulticNotifyPrefs)
+	Coordinator      *vaulticCoordinator
+	History          *vaulticHistoryStore
+	Now              func() time.Time
+	Credentials      func() bool
 	ActiveRepository func() string
-	Location    func() *time.Location
+	Location         func() *time.Location
 }
 
 type vaulticAutomationUI struct {
@@ -77,9 +77,9 @@ type vaulticAutomationUI struct {
 	message     *widget.Label
 
 	scheduleValue, nextValue, lastValue, activityValue, targetValue *widget.Label
-	warning                                            *widget.Label
-	historyBox                                         *fyne.Container
-	loading                                            bool
+	warning                                                         *widget.Label
+	historyBox                                                      *fyne.Container
+	loading                                                         bool
 }
 
 // Display order: Monday first.
@@ -329,7 +329,7 @@ func vaulticFormatDuration(d time.Duration) string {
 // that they can be tested).
 type vaulticAutomationSummary struct {
 	Schedule, Next, LastSuccess, Activity, Warning, Target, Repository string
-	Paused                                         bool
+	Paused                                                             bool
 }
 
 func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
@@ -338,11 +338,19 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 	var out vaulticAutomationSummary
 	out.Paused = h.Paused()
 	activeRepo := ""
-	if h.ActiveRepository != nil { activeRepo = h.ActiveRepository() }
+	if h.ActiveRepository != nil {
+		activeRepo = h.ActiveRepository()
+	}
 	repo := activeRepo
-	if profile.Schedule != nil && profile.Schedule.Repository != "" { repo = profile.Schedule.Repository }
+	if profile.Schedule != nil && profile.Schedule.Repository != "" {
+		repo = profile.Schedule.Repository
+	}
 	out.Repository = repo
-	if repo != "" { out.Target = vaulticSafeLocation(repo) } else { out.Target = "Aucun dépôt sélectionné" }
+	if repo != "" {
+		out.Target = vaulticSafeLocation(repo)
+	} else {
+		out.Target = "Aucun dépôt sélectionné"
+	}
 	switch {
 	case profile.Schedule == nil || profile.Schedule.Kind == "" || profile.Schedule.Kind == vaulticScheduleManual:
 		out.Schedule, out.Next = "Manuel uniquement", "Aucune — lancez la sauvegarde vous-même."

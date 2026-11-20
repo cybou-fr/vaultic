@@ -61,7 +61,8 @@ type vaulticSlotState struct {
 	Slot     time.Time
 	Attempts int
 	RetryAt  time.Time
-	Overdue  bool // a skipped/overdue entry was already recorded for this waiting period
+	Handled  time.Time // latest slot already consumed in this session, even if persisting it failed
+	Overdue  bool      // a skipped/overdue entry was already recorded for this waiting period
 }
 
 // vaulticCoordinator is the only place where backups begin and end. Manual and
@@ -151,7 +152,9 @@ func (c *vaulticCoordinator) changed() {
 }
 
 func (c *vaulticCoordinator) persistenceError(err error) {
- if err != nil && c.OnPersistenceError != nil { c.OnPersistenceError(err) }
+	if err != nil && c.OnPersistenceError != nil {
+		c.OnPersistenceError(err)
+	}
 }
 
 // Execute acquires the gate and runs the job to completion. A scheduled job
@@ -209,14 +212,26 @@ func (c *vaulticCoordinator) RunAcquired(job vaulticJob, exec vaulticExec) (reco
 	// Persist before releasing the gate, so the next run sees this one.
 	if job.Trigger == vaulticTriggerScheduled {
 		saveSlot := c.env.SaveSlotWorker
-		if saveSlot == nil { saveSlot = c.env.SaveSlot }
+		if saveSlot == nil {
+			saveSlot = c.env.SaveSlot
+		}
 		if saveSlot != nil {
-			if e := saveSlot(job.Profile, job.Slot); e != nil { c.persistenceError(fmt.Errorf("créneau de sauvegarde non enregistré : %w", e)) }
+			if e := saveSlot(job.Profile, job.Slot); e != nil {
+				c.persistenceError(fmt.Errorf("créneau de sauvegarde non enregistré : %w", e))
+			}
 		}
 	}
-	if e := c.history.Append(record); e != nil { c.persistenceError(fmt.Errorf("historique non enregistré : %w", e)) }
+	if e := c.history.Append(record); e != nil {
+		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+	}
 	c.notifyRecord(record)
 	c.mu.Lock()
+	if job.Trigger == vaulticTriggerScheduled {
+		st := c.slotState(job.Profile)
+		if job.Slot.After(st.Handled) {
+			st.Handled = job.Slot
+		}
+	}
 	if st := c.slots[job.Profile]; st != nil {
 		st.Overdue = false
 	}
@@ -278,7 +293,9 @@ func (c *vaulticCoordinator) recordSkipped(job vaulticJob, reason string) vaulti
 		Trigger: job.Trigger, CatchUp: job.CatchUp, Started: now, Ended: now,
 		Status: vaulticStatusSkipped, Summary: reason,
 	}
-	if e := c.history.Append(record); e != nil { c.persistenceError(fmt.Errorf("historique non enregistré : %w", e)) }
+	if e := c.history.Append(record); e != nil {
+		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+	}
 	c.notifyRecord(record)
 	c.changed()
 	return record
@@ -351,12 +368,20 @@ func (c *vaulticCoordinator) Tick() {
 // tickProfile returns true when it started a run.
 func (c *vaulticCoordinator) tickProfile(profile vaulticBackupProfile, now time.Time, loc *time.Location) bool {
 	plan := vaulticPlan(*profile.Schedule, now, loc)
+	if plan.ClockBack {
+		c.mu.Lock()
+		c.slotState(profile.Name).Handled = time.Time{}
+		c.mu.Unlock()
+	}
 	if plan.ClockBack && c.env.SaveSlot != nil {
 		c.persistenceError(c.env.SaveSlot(profile.Name, now)) // clock moved back
 		return false
 	}
 	c.mu.Lock()
 	st := c.slotState(profile.Name)
+	if plan.Due && !plan.Slot.After(st.Handled) {
+		plan.Due = false // consumed earlier in this session although saving it failed
+	}
 	if !plan.Due {
 		st.Attempts, st.RetryAt = 0, time.Time{}
 		c.mu.Unlock()
@@ -372,10 +397,17 @@ func (c *vaulticCoordinator) tickProfile(profile vaulticBackupProfile, now time.
 	}
 
 	targetRepo := profile.Schedule.Repository
-	if targetRepo == "" { targetRepo = c.env.Repository() } // legacy schedules and test harnesses
+	if targetRepo == "" {
+		targetRepo = c.env.Repository()
+	} // legacy schedules and test harnesses
 	job := vaulticJob{Profile: profile.Name, Repository: targetRepo, Trigger: vaulticTriggerScheduled, Slot: plan.Slot, CatchUp: plan.CatchUp}
 	finishSkipped := func(reason string) {
 		c.recordSkipped(job, reason)
+		c.mu.Lock()
+		if plan.Slot.After(st.Handled) {
+			st.Handled = plan.Slot
+		}
+		c.mu.Unlock()
 		if c.env.SaveSlot != nil {
 			c.persistenceError(c.env.SaveSlot(profile.Name, plan.Slot))
 		}
@@ -441,7 +473,9 @@ func (c *vaulticCoordinator) recordSkippedQuiet(job vaulticJob, reason string) v
 		Trigger: job.Trigger, CatchUp: job.CatchUp, Started: now, Ended: now,
 		Status: vaulticStatusSkipped, Summary: reason,
 	}
-	if e := c.history.Append(record); e != nil { c.persistenceError(fmt.Errorf("historique non enregistré : %w", e)) }
+	if e := c.history.Append(record); e != nil {
+		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+	}
 	c.changed()
 	return record
 }

@@ -266,37 +266,42 @@ func (h *vaulticHistoryStore) RenameProfile(oldName, newName string) error {
 	return h.saveLocked()
 }
 
- 
 // LastSuccessForRepository only treats backups in the requested repository as
 // evidence of protection. Switching the active repository must never reuse the
 // success of another repository with the same profile name.
 func (h *vaulticHistoryStore) LastSuccessForRepository(profile, repository string) (vaulticRunRecord, bool) {
- if repository == "" { return vaulticRunRecord{}, false }
- wanted := vaulticSafeLocation(repository)
- h.mu.Lock()
- defer h.mu.Unlock()
- _ = h.load()
- for i := len(h.records)-1; i>=0; i-- {
-  r := h.records[i]
-  if r.Profile == profile && r.Repository == wanted && r.Status == vaulticStatusSuccess {
-   return r, true
-  }
- }
- return vaulticRunRecord{}, false
+	if repository == "" {
+		return vaulticRunRecord{}, false
+	}
+	wanted := vaulticSafeLocation(repository)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_ = h.load()
+	for i := len(h.records) - 1; i >= 0; i-- {
+		r := h.records[i]
+		if r.Profile == profile && r.Repository == wanted && r.Status == vaulticStatusSuccess {
+			return r, true
+		}
+	}
+	return vaulticRunRecord{}, false
 }
 
 // RecentForRepository shows only records for the requested profile and storage.
 // Legacy records without a repository are intentionally not attributed.
 func (h *vaulticHistoryStore) RecentForRepository(profile, repository string, n int) []vaulticRunRecord {
- if repository == "" || n <= 0 { return nil }
- wanted := vaulticSafeLocation(repository)
- h.mu.Lock()
- defer h.mu.Unlock()
- _ = h.load()
- out := make([]vaulticRunRecord,0,min(n,len(h.records)))
- for i := len(h.records)-1; i>=0 && len(out)<n; i-- {
-  r:=h.records[i]
-  if r.Profile==profile && r.Repository==wanted {out=append(out,r)}
- }
- return out
+	if repository == "" || n <= 0 {
+		return nil
+	}
+	wanted := vaulticSafeLocation(repository)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_ = h.load()
+	out := make([]vaulticRunRecord, 0, min(n, len(h.records)))
+	for i := len(h.records) - 1; i >= 0 && len(out) < n; i-- {
+		r := h.records[i]
+		if r.Profile == profile && r.Repository == wanted {
+			out = append(out, r)
+		}
+	}
+	return out
 }

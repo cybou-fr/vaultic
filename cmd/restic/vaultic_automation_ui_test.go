@@ -65,7 +65,7 @@ func newAutomationFixture(t *testing.T) *automationFixture {
 		Notify: func() vaulticNotifyPrefs { return f.prefs }, SetNotify: func(p vaulticNotifyPrefs) { f.prefs = p },
 		Coordinator: f.coord, History: f.history, Now: func() time.Time { return f.now },
 		ActiveRepository: func() string { return "local:/repo" },
-		Credentials: func() bool { return f.creds }, Location: func() *time.Location { return loc },
+		Credentials:      func() bool { return f.creds }, Location: func() *time.Location { return loc },
 	})
 	return f
 }
