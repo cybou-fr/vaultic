@@ -16,16 +16,18 @@ import (
 )
 
 func vaulticOpenExplorer(app fyne.App, snapshot vaulticSnapshot, run func(string, func(context.Context, global.Options) error)) {
-    vaulticOpenExplorerAtPath(app,snapshot,run,"")
+	vaulticOpenExplorerAtPath(app, snapshot, run, "")
 }
 
 // Opens the existing snapshot browser with a specific path already queued for
 // selective restore. The user must still choose and confirm the destination.
-func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(string, func(context.Context, global.Options) error),initialPath string) {
-    if initialPath!="" {
-        initialPath=path.Clean(initialPath)
-        if vaulticValidateSnapshotPath(initialPath)!=nil || initialPath=="/"{initialPath=""}
-    }
+func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(string, func(context.Context, global.Options) error), initialPath string) {
+	if initialPath != "" {
+		initialPath = path.Clean(initialPath)
+		if vaulticValidateSnapshotPath(initialPath) != nil || initialPath == "/" {
+			initialPath = ""
+		}
+	}
 	w := app.NewWindow("Vaultic — Instantané " + snapshot.ShortID)
 	closed := false
 	w.SetOnClosed(func() { closed = true })
@@ -137,29 +139,35 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 				return err
 			}
 			fyne.Do(func() {
-                if closed{return}
+				if closed {
+					return
+				}
 				directory = next
 				display(found, next, fmt.Sprintf("%d élément(s)", len(found)), false)
-                if initialPath!="" && path.Dir(initialPath)==next {
-                    desired:=initialPath
-                    initialPath=""
-                    located:=false
-                    for index,node:=range found{
-                        if node.Path!=desired{continue}
-                        located=true
-                        files.Select(index)
-                        if vaulticRestorableNode(node){
-                            picked[node.Path]=node
-                            files.Refresh()
-                            update()
-                            info.SetText("Élément retrouvé et ajouté à la sélection. Choisissez « Restaurer la sélection… » pour continuer.")
-                        }else{
-                            info.SetText("Élément retrouvé mais son type n'est pas restaurable en toute sécurité.")
-                        }
-                        break
-                    }
-                    if !located{info.SetText("Chemin introuvable dans cet instantané. Parcourez les dossiers pour le rechercher.")}
-                }
+				if initialPath != "" && path.Dir(initialPath) == next {
+					desired := initialPath
+					initialPath = ""
+					located := false
+					for index, node := range found {
+						if node.Path != desired {
+							continue
+						}
+						located = true
+						files.Select(index)
+						if vaulticRestorableNode(node) {
+							picked[node.Path] = node
+							files.Refresh()
+							update()
+							info.SetText("Élément retrouvé et ajouté à la sélection. Choisissez « Restaurer la sélection… » pour continuer.")
+						} else {
+							info.SetText("Élément retrouvé mais son type n'est pas restaurable en toute sécurité.")
+						}
+						break
+					}
+					if !located {
+						info.SetText("Chemin introuvable dans cet instantané. Parcourez les dossiers pour le rechercher.")
+					}
+				}
 			})
 			return nil
 		})
@@ -285,7 +293,9 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 	))
 	update()
 	vaulticShowWindow(w, fyne.NewSize(900, 650), fyne.NewSize(520, 450))
-    initialDirectory:="/"
-    if initialPath!=""{initialDirectory=path.Dir(initialPath)}
+	initialDirectory := "/"
+	if initialPath != "" {
+		initialDirectory = path.Dir(initialPath)
+	}
 	load(initialDirectory)
 }

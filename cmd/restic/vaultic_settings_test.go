@@ -1,8 +1,8 @@
 package main
 
 import (
-    "encoding/json"
-    "testing"
+	"encoding/json"
+	"testing"
 )
 
 func TestVaulticMigrateDepots(t *testing.T) {
@@ -46,19 +46,23 @@ func TestVaulticMigrateBackupProfiles(t *testing.T) {
 }
 
 func TestVaulticProfileExclusionsSurviveJSONSerialization(t *testing.T) {
-    input:=vaulticSettings{
-        Profiles:[]vaulticBackupProfile{{
-            Name:"Documents",
-            Sources:[]string{"documents"},
-            Excludes:[]string{"**/node_modules","*.tmp"},
-        }},
-    }
-    data,err:=json.Marshal(input)
-    if err!=nil{t.Fatal(err)}
-    var decoded vaulticSettings
-    if err:=json.Unmarshal(data,&decoded);err!=nil{t.Fatal(err)}
-    if len(decoded.Profiles)!=1 || len(decoded.Profiles[0].Excludes)!=2 ||
-        decoded.Profiles[0].Excludes[0]!="**/node_modules"{
-        t.Fatalf("règles perdues : %+v", decoded.Profiles)
-    }
+	input := vaulticSettings{
+		Profiles: []vaulticBackupProfile{{
+			Name:     "Documents",
+			Sources:  []string{"documents"},
+			Excludes: []string{"**/node_modules", "*.tmp"},
+		}},
+	}
+	data, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded vaulticSettings
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Profiles) != 1 || len(decoded.Profiles[0].Excludes) != 2 ||
+		decoded.Profiles[0].Excludes[0] != "**/node_modules" {
+		t.Fatalf("règles perdues : %+v", decoded.Profiles)
+	}
 }
