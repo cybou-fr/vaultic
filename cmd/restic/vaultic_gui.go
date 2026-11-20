@@ -23,7 +23,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -1400,24 +1399,7 @@ func vaulticMain() {
 			return
 		}
 		target := snapshots[selectedSnapshot]
-		options := make([]string, 0, len(snapshots)-1)
-		ids := make(map[string]string, len(snapshots)-1)
-		initial := ""
-		suggestedID := vaulticSuggestedComparisonBase(snapshots, target)
-		for _, sn := range snapshots {
-			if sn.ID == target.ID {
-				continue
-			}
-			label := sn.Time.Local().Format("02/01/2006 15:04:05") + "  ·  " + sn.ShortID + "  ·  " + sn.Hostname + "  ·  " + sn.ID
-			options = append(options, label)
-			ids[label] = sn.ID
-			if sn.ID == suggestedID {
-				initial = label
-			}
-		}
-		if initial == "" {
-			initial = options[0]
-		}
+		options, ids, initial := vaulticComparisonChoices(snapshots, target)
 		compareSelect := widget.NewSelect(options, nil)
 		compareSelect.SetSelected(initial)
 		helper := vaulticWrappedLabel("Sélectionnez l'instantané de référence (avant). Les différences seront calculées vers l'instantané actuellement sélectionné (après).")
@@ -1664,82 +1646,27 @@ func vaulticMain() {
 
 	// Every page has one purpose. Operations still invoke the original Go
 	// restic engine; this shell only changes presentation and navigation.
-	savedRepositories := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dépôts enregistrés", 20),
-		repoListBox,
-		vaulticWrappedLabel("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance."),
-	))
-	activeConfiguration := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dépôt actif", 20),
-		repoValue,
-		vaulticWrappedLabel("Saisissez le mot de passe restic du dépôt sélectionné, puis vérifiez la connexion. Sans mot de passe, seul l'accès au dépôt est testé."),
-		passEntry,
-		verifyButton,
-		cloudAuthEditorButton,
-		clearCloudAuthButton,
-	))
-	repositoriesPage := container.NewScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Dépôts", 26),
-		savedRepositories,
-		activeConfiguration,
-		setupUI.Content,
-	)))
-
 	startBackup := widget.NewButtonWithIcon("Préparer une sauvegarde", theme.MediaPlayIcon(), nil)
 	startBackup.Importance = widget.HighImportance
 	setupButton := widget.NewButtonWithIcon("Configurer le dépôt", theme.SettingsIcon(), nil)
 	viewSnapshots := widget.NewButtonWithIcon("Voir les instantanés", theme.HistoryIcon(), nil)
 	viewStorage := widget.NewButtonWithIcon("Espace de stockage", theme.StorageIcon(), nil)
-	snapshotOverview := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dernière activité", 19),
-		recentSnapshotValue,
-		viewSnapshots,
-	))
-	statGrid := container.NewVBox(
-		container.NewGridWithColumns(2,
-			vaulticStatCard("SOURCES CONFIGURÉES", sourceCountValue),
-			vaulticStatCard("INSTANTANÉS CONSULTÉS", snapshotCountValue),
-		),
-		container.NewGridWithColumns(2,
-			vaulticStatCard("DÉPÔT ACTIF", repoValue),
-			vaulticStatCard("DERNIÈRE OPÉRATION RÉUSSIE", recentRunValue),
-		),
-	)
-	overviewPage := container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Vue d’ensemble", 26),
-		container.NewHBox(startBackup, setupButton, viewStorage), statGrid, snapshotOverview,
-	)))
+	overviewPage := vaulticOverviewPage(vaulticOverviewParts{
+		SourceCount: sourceCountValue, SnapshotCount: snapshotCountValue, Repository: repoValue,
+		RecentRun: recentRunValue, RecentSnapshot: recentSnapshotValue,
+		StartBackup: startBackup, Setup: setupButton, ViewSnapshots: viewSnapshots, ViewStorage: viewStorage,
+	})
+	repositoriesPage := vaulticRepositoriesPage(vaulticRepositoriesParts{
+		SavedList: repoListBox, ActiveRepository: repoValue, Password: passEntry,
+		Verify: verifyButton, EditAuth: cloudAuthEditorButton, ClearAuth: clearCloudAuthButton,
+		Setup: setupUI.Content,
+	})
 	automationUI = newVaulticAutomationUI(vaulticAutomationHooks{
 		Profile: func() vaulticBackupProfile { return saved.Profiles[profileIndex] },
 		SetSchedule: func(schedule vaulticSchedule) error {
-			next := append([]vaulticBackupProfile(nil), saved.Profiles...)
-			old := next[profileIndex].Schedule
-			if schedule.Kind == vaulticScheduleManual {
-				next[profileIndex].Schedule = nil
-			} else {
-				// The selected repository becomes this schedule's explicit target.
-				// Switching repositories later must not silently redirect backups.
-				if activeRepository != "" {
-					schedule.Repository = activeRepository
-				} else if old != nil {
-					schedule.Repository = old.Repository
-				}
-				if schedule.Enabled && schedule.Repository == "" {
-					return errors.New("Sélectionnez un dépôt dans Dépôts avant d'activer la planification.")
-				}
-				if err := vaulticValidateDepot(schedule.Repository); schedule.Enabled && err != nil {
-					return errors.New("Le dépôt de destination est invalide.")
-				}
-				// An unchanged schedule preserves its slot; a changed destination
-				// starts fresh instead of replaying an old repository's schedule.
-				if old != nil && old.Repository == schedule.Repository && old.Kind == schedule.Kind &&
-					old.Enabled == schedule.Enabled && old.EveryHours == schedule.EveryHours &&
-					old.Time == schedule.Time && old.MonthDay == schedule.MonthDay && fmt.Sprint(old.Weekdays) == fmt.Sprint(schedule.Weekdays) {
-					schedule.LastSlot = old.LastSlot
-				} else if schedule.Enabled {
-					schedule.LastSlot = time.Now().Format(time.RFC3339)
-				}
-				next[profileIndex].Schedule = &schedule
+			next, err := vaulticApplySchedule(saved.Profiles, profileIndex, schedule, activeRepository, time.Now())
+			if err != nil {
+				return err
 			}
 			if !applyProfiles(next, profileIndex) {
 				return errors.New("Enregistrement impossible : consultez le message affiché.")
@@ -1771,137 +1698,41 @@ func vaulticMain() {
 		Credentials:      func() bool { return passEntry.Text != "" },
 		Location:         func() *time.Location { return time.Local },
 	})
-	automationScroll := container.NewScroll(container.NewPadded(automationUI.Content))
-	backupTabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Lancement", theme.MediaPlayIcon(), container.NewVScroll(container.NewBorder(
-			container.NewPadded(container.NewVBox(
-				container.NewHBox(duplicateProfileButton, deleteProfileButton),
-				container.NewHBox(exclusionsButton, previewExclusionsButton),
-				exclusionSummary,
-			)),
-			container.NewPadded(vaulticSurface(container.NewVBox(
-				vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
-				container.NewGridWithColumns(2, backupButton, backupReportButton),
-			))),
-			nil, nil,
-			container.NewPadded(vaulticSurface(sourceSection)),
-		))),
-		container.NewTabItemWithIcon("Automatisation", theme.HistoryIcon(), automationScroll),
-	)
-	backupPage := container.NewBorder(
-		container.NewPadded(container.NewVBox(
-			vaulticHeading("Sauvegarde", 26),
-			widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil, nil, nil,
-				container.NewHBox(newProfileButton, renameProfileButton), profileSelect))),
-		)),
-		nil, nil, nil,
-		backupTabs,
-	)
-	snapshotPage := container.NewBorder(
-		container.NewPadded(container.NewVBox(
-			vaulticPageHeading("Chronologie des instantanés", "Parcourez les versions par date, comparez les changements et restaurez vos fichiers."),
-			refreshButton,
-		)),
-		container.NewPadded(vaulticSurface(container.NewVBox(
-			snapshotDetailsScroll,
-			container.NewGridWithColumns(2, snapshotDetailsButton, snapshotCompareButton),
-			container.NewGridWithColumns(2, explorerButton, restoreButton),
-		))),
-		nil, nil,
-		container.NewPadded(vaulticSurface(container.NewStack(snapshotList, snapshotEmpty))),
-	)
-	storagePage := container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticPageHeading("Stockage", "Mesurez les données réellement référencées par les instantanés."),
-		vaulticSurface(container.NewVBox(
-			vaulticWrappedLabel("Cette analyse lit les métadonnées du dépôt. Elle peut prendre du temps sur les dépôts volumineux et peut être annulée."),
-			storageButton,
-			storageUpdated,
-		)),
-		container.NewGridWithColumns(2,
-			vaulticStatCard("VOLUME DES BLOBS", storageVolume),
-			vaulticStatCard("BLOBS RÉFÉRENCÉS", storageBlobs),
-		),
-		vaulticStatCard("INSTANTANÉS ANALYSÉS", storageSnapshots),
-		vaulticSurface(vaulticWrappedLabel("Mesure restic raw-data : taille des blocs référencés, hors métadonnées du dépôt, fichiers non référencés et espace disque libre. Ce n'est pas la taille physique complète du dépôt.")),
-	)))
-	checkDescription := widget.NewLabel("La vérification contrôle la structure du dépôt. Elle ne supprime pas vos sauvegardes.")
-	checkDescription.Wrapping = fyne.TextWrapWord
-	checkPage := container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Intégrité", 26),
-		vaulticSurface(container.NewVBox(
-			vaulticHeading("Contrôle du dépôt", 20),
-			checkDescription,
-			checkButton,
-		)),
-	)))
-	journalPage := container.NewBorder(
-		container.NewPadded(vaulticHeading("Activité", 26)),
-		nil, nil, nil, container.NewPadded(vaulticSurface(container.NewBorder(
-			container.NewHBox(widget.NewLabel("Événements de cette session"), layout.NewSpacer(), widget.NewButtonWithIcon("Effacer", theme.ContentClearIcon(), func() { logText = ""; logs.SetText("") })),
-			nil, nil, nil, container.NewVScroll(logs),
-		))),
-	)
-	settingsPage := container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Paramètres", 26),
-		vaulticSurface(container.NewVBox(
-			vaulticHeading("À propos de Vaultic", 19),
-			vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),
-			vaulticWrappedLabel("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic)."),
-			widget.NewLabel("Moteur intégré — "+global.Version),
-		)),
-	)))
+	backupPage, automationScroll := vaulticBackupPage(vaulticBackupParts{
+		Profile: profileSelect, NewProfile: newProfileButton, RenameProfile: renameProfileButton,
+		DuplicateProfile: duplicateProfileButton, DeleteProfile: deleteProfileButton,
+		Exclusions: exclusionsButton, PreviewExclusions: previewExclusionsButton, ExclusionSummary: exclusionSummary,
+		Sources: sourceSection, BackupNow: backupButton, LastReport: backupReportButton,
+	}, automationUI.Content)
+	snapshotPage := vaulticSnapshotPage(vaulticSnapshotParts{
+		Refresh: refreshButton, Details: snapshotDetailsScroll,
+		DetailsButton: snapshotDetailsButton, Compare: snapshotCompareButton,
+		Explorer: explorerButton, Restore: restoreButton,
+		List: snapshotList, Empty: snapshotEmpty,
+	})
+	storagePage := vaulticStoragePage(vaulticStorageParts{
+		Analyze: storageButton, Updated: storageUpdated,
+		Volume: storageVolume, Blobs: storageBlobs, Snapshots: storageSnapshots,
+	})
+	checkPage := vaulticIntegrityPage(checkButton)
+	journalPage := vaulticActivityPage(logs, func() { logText = ""; logs.SetText("") })
+	settingsPage := vaulticSettingsPage()
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
 	stopFocusFollow = vaulticKeepFocusVisible(w, []*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage, automationScroll})
-	mainPage := container.NewStack(overviewPage)
-	var navButtons []*widget.Button
-	navigate := func(index int) {
-		if index < 0 || index >= len(pages) {
-			return
-		}
-		mainPage.Objects = []fyne.CanvasObject{pages[index]}
-		mainPage.Refresh()
-		for i, b := range navButtons {
-			if i == index {
-				b.Importance = widget.HighImportance
-			} else {
-				b.Importance = widget.LowImportance
-			}
-			b.Refresh()
-		}
-	}
-	navLabels := []string{"Vue d'ensemble", "Sauvegarde", "Instantanés", "Stockage", "Intégrité", "Activité", "Dépôts", "Paramètres"}
-	navIcons := []fyne.Resource{theme.HomeIcon(), theme.StorageIcon(), theme.HistoryIcon(), theme.StorageIcon(), theme.ConfirmIcon(), theme.ListIcon(), theme.StorageIcon(), theme.SettingsIcon()}
-	for i := range navLabels {
-		index := i
-		button := widget.NewButtonWithIcon(navLabels[i], navIcons[i], func() { navigate(index) })
-		button.Alignment = widget.ButtonAlignLeading
-		button.Importance = widget.LowImportance
-		navButtons = append(navButtons, button)
-	}
-	setupButton.OnTapped = func() { navigate(6) }
-	startBackup.OnTapped = func() { navigate(1) }
-	viewSnapshots.OnTapped = func() { navigate(2) }
-	viewStorage.OnTapped = func() { navigate(3) }
-	sidebarBg := canvas.NewRectangle(vaulticSidebar)
-	brand := container.NewHBox(container.NewGridWrap(fyne.NewSize(40, 40), widget.NewIcon(vaulticAppIcon())), container.NewCenter(vaulticHeading("Vaultic", 24)))
-	sidebar := container.NewStack(sidebarBg, container.NewPadded(container.NewBorder(
-		container.NewVBox(brand, widget.NewSeparator()), nil,
-		nil, nil,
-		container.NewVScroll(container.New(layout.NewCustomPaddedVBoxLayout(4), navButtons[0], navButtons[1], navButtons[2], navButtons[3], navButtons[4], navButtons[5], navButtons[6], navButtons[7])),
-	)))
-	statusTitle := widget.NewLabelWithStyle("ÉTAT", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	statusBar := container.NewVBox(
-		widget.NewSeparator(),
-		progressSlot,
-		container.NewBorder(nil, nil, statusTitle, cancelButton, status),
-	)
+	nav := vaulticNewNavigation(pages)
+	navigate := nav.Navigate
+	setupButton.OnTapped = func() { navigate(vaulticPageRepositories) }
+	startBackup.OnTapped = func() { navigate(vaulticPageBackup) }
+	viewSnapshots.OnTapped = func() { navigate(vaulticPageSnapshots) }
+	viewStorage.OnTapped = func() { navigate(vaulticPageStorage) }
+	statusBar := vaulticStatusBar(progressSlot, status, cancelButton)
 	if activeRepository == "" {
-		navigate(6)
+		navigate(vaulticPageRepositories)
 	} else {
-		navigate(0)
+		navigate(vaulticPageOverview)
 	}
-	windowContent = container.NewBorder(nil, container.NewPadded(statusBar), sidebar, nil, mainPage)
+	windowContent = container.NewBorder(nil, container.NewPadded(statusBar), nav.Sidebar, nil, nav.Pages)
 	refreshDepots()
 	refreshProfiles()
 	w.SetContent(windowContent)
