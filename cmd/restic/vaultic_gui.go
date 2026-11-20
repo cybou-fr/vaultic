@@ -959,10 +959,11 @@ func vaulticMain() {
     saveScheduleSlot := func(profile string, slot time.Time) error {
         for i := range saved.Profiles {
             if saved.Profiles[i].Name == profile && saved.Profiles[i].Schedule != nil {
-                old := saved.Profiles[i].Schedule.LastSlot
+                // Advance the in-memory anchor even on a disk error: the same
+                // run must not be launched every 15 seconds in this session.
+                // Persistence failures are surfaced by the coordinator.
                 saved.Profiles[i].Schedule.LastSlot = slot.Format(time.RFC3339)
                 if err := persist(saved.Depots, activeRepository); err != nil {
-                    saved.Profiles[i].Schedule.LastSlot = old
                     return err
                 }
                 return nil
