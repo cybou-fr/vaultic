@@ -187,10 +187,7 @@ func vaulticMain() {
 	var profiles *vaulticProfilesController
 	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	recentRunValue.Truncation = fyne.TextTruncateEllipsis
-	storageVolume := vaulticHeading("—", 24)
-	storageBlobs := vaulticHeading("—", 24)
-	storageSnapshots := vaulticHeading("—", 24)
-	storageUpdated := vaulticWrappedLabel("Aucune analyse effectuée pour ce dépôt.")
+	var maintenance *vaulticMaintenanceController
 
 	var repos *vaulticRepositoriesController
 
@@ -226,7 +223,6 @@ func vaulticMain() {
 		}
 		notifyPrefs.Store(&prefs)
 	}
-	closePrompt := false
 	var stopFocusFollow func()
 	closeWindow := func() {
 		if backup != nil {
@@ -291,13 +287,7 @@ func vaulticMain() {
 		CancelRun:     func() { runner.RequestCancel() },
 		Activated: func() {
 			snapshots.Clear()
-			storageVolume.Text = "—"
-			storageVolume.Refresh()
-			storageBlobs.Text = "—"
-			storageBlobs.Refresh()
-			storageSnapshots.Text = "—"
-			storageSnapshots.Refresh()
-			storageUpdated.SetText("Aucune analyse effectuée pour ce dépôt.")
+			maintenance.Reset()
 		},
 	})
 
@@ -361,35 +351,9 @@ func vaulticMain() {
 			runner.Run(title, repos.Active(), repos.Password.Text, vaulticRunOptions{}, fn, done)
 		},
 	})
-	checkButton := widget.NewButton("Vérifier l'intégrité", func() {
-		run("Vérification", func(ctx context.Context, g global.Options) error {
-			_, err := runCheck(ctx, CheckOptions{}, g, nil, g.Term)
-			return err
-		})
-	})
-	storageButton := widget.NewButtonWithIcon("Analyser le stockage", theme.SearchIcon(), func() {
-		run("Analyse du stockage", func(ctx context.Context, g global.Options) error {
-			metrics, err := vaulticCollectStorageStatistics(ctx, g)
-			if err != nil {
-				return err
-			}
-			fyne.Do(func() {
-				if ctx.Err() != nil {
-					return
-				}
-				storageVolume.Text = vaulticBytes(metrics.TotalSize)
-				storageVolume.Refresh()
-				storageBlobs.Text = fmt.Sprintf("%d", metrics.TotalBlobCount)
-				storageBlobs.Refresh()
-				storageSnapshots.Text = fmt.Sprintf("%d", metrics.SnapshotsCount)
-				storageSnapshots.Refresh()
-				storageUpdated.SetText("Dernière analyse : " + time.Now().Format("02/01/2006 à 15:04"))
-			})
-			return nil
-		})
-	})
+	maintenance = newVaulticMaintenanceController(vaulticMaintenanceHooks{Run: run})
 
-	actionButtons = []*widget.Button{repos.Verify, repos.EditAuth, repos.ClearAuth, profiles.AddFolder, profiles.AddFile, snapshots.Refresh, checkButton, storageButton, profiles.New, profiles.Rename, profiles.Duplicate, profiles.Delete, profiles.Exclusions, profiles.Preview}
+	actionButtons = []*widget.Button{repos.Verify, repos.EditAuth, repos.ClearAuth, profiles.AddFolder, profiles.AddFile, snapshots.Refresh, maintenance.Check, maintenance.Analyze, profiles.New, profiles.Rename, profiles.Duplicate, profiles.Delete, profiles.Exclusions, profiles.Preview}
 	updateActions = func() {
 		if len(profiles.Sources()) == 0 {
 			profiles.Empty.Show()
@@ -402,7 +366,7 @@ func vaulticMain() {
 		vaulticSetButtonEnabled(profiles.Preview, !busy.Load() && len(profiles.Sources()) > 0 && len(profiles.Current().Excludes) > 0)
 		vaulticSetButtonEnabled(profiles.Duplicate, !busy.Load())
 		vaulticSetButtonEnabled(profiles.Delete, !busy.Load() && len(saved.Profiles) > 1)
-		vaulticSetButtonEnabled(storageButton, !busy.Load() && repos.Active() != "")
+		maintenance.UpdateState(busy.Load(), repos.Active() != "")
 		vaulticSetButtonEnabled(profiles.RemoveSource, !busy.Load() && profiles.Selected() >= 0)
 		repos.UpdateState(busy.Load())
 		if busy.Load() {
@@ -478,10 +442,10 @@ func vaulticMain() {
 		List: snapshots.list, Empty: snapshots.Empty,
 	})
 	storagePage := vaulticStoragePage(vaulticStorageParts{
-		Analyze: storageButton, Updated: storageUpdated,
-		Volume: storageVolume, Blobs: storageBlobs, Snapshots: storageSnapshots,
+		Analyze: maintenance.Analyze, Updated: maintenance.Updated,
+		Volume: maintenance.Volume, Blobs: maintenance.Blobs, Snapshots: maintenance.Snapshots,
 	})
-	checkPage := vaulticIntegrityPage(checkButton)
+	checkPage := vaulticIntegrityPage(maintenance.Check)
 	journalPage := vaulticActivityPage(logView.Entry, logView.Clear)
 	settingsPage := vaulticSettingsPage()
 
@@ -503,25 +467,11 @@ func vaulticMain() {
 	repos.Refresh()
 	profiles.Refresh()
 	w.SetContent(windowContent)
-	w.SetCloseIntercept(func() {
-		if runner.Closing() || closePrompt {
-			return
-		}
-		if busy.Load() {
-			closePrompt = true
-			dialog.ShowConfirm("Quitter Vaultic", "Annuler l’opération et fermer Vaultic après son arrêt ?", func(ok bool) {
-				closePrompt = false
-				if !ok {
-					return
-				}
-				if !runner.BeginClose() {
-					closeWindow()
-				}
-			}, w)
-			return
-		}
-		closeWindow()
-	})
+	closer := &vaulticWindowCloser{
+		Busy: busy.Load, Closing: runner.Closing, BeginClose: runner.BeginClose,
+		CloseNow: closeWindow, Confirm: vaulticConfirm(w),
+	}
+	w.SetCloseIntercept(closer.Intercept)
 	vaulticShowWindow(w, fyne.NewSize(1180, 760), fyne.NewSize(640, 365))
 	if settingsErr != nil {
 		dialog.ShowError(fmt.Errorf("Enregistrement des préférences désactivé pour cette session : %w", settingsErr), w)
