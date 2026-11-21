@@ -63,6 +63,7 @@ type vaulticRepositoriesParts struct {
 	SavedList                   fyne.CanvasObject
 	ActiveRepository            fyne.CanvasObject
 	Password                    fyne.CanvasObject
+	Remember                    fyne.CanvasObject
 	Verify, EditAuth, ClearAuth fyne.CanvasObject
 	Setup                       fyne.CanvasObject
 }
@@ -78,6 +79,7 @@ func vaulticRepositoriesPage(p vaulticRepositoriesParts) *container.Scroll {
 		p.ActiveRepository,
 		vaulticWrappedLabel("Saisissez le mot de passe restic du dépôt sélectionné, puis vérifiez la connexion. Sans mot de passe, seul l'accès au dépôt est testé."),
 		p.Password,
+		p.Remember,
 		p.Verify,
 		p.EditAuth,
 		p.ClearAuth,
@@ -202,9 +204,13 @@ func vaulticActivityPage(logs fyne.CanvasObject, clear func()) fyne.CanvasObject
 	)
 }
 
-func vaulticSettingsPage() *container.Scroll {
+func vaulticSettingsPage(background fyne.CanvasObject) *container.Scroll {
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
 		vaulticHeading("Paramètres", 26),
+		vaulticSurface(container.NewVBox(
+			vaulticHeading("Arrière-plan", 19),
+			background,
+		)),
 		vaulticSurface(container.NewVBox(
 			vaulticHeading("À propos de Vaultic", 19),
 			vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),

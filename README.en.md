@@ -108,7 +108,10 @@ The page shows the frequency, the **next planned run**, the **last successful ba
 
 **How it works**
 
-- The scheduler only works **while Vaultic is running**. There is no Windows service, no system task scheduler entry and no hidden process.
+- The scheduler only works **while the Vaultic process runs**. There is no Windows service, no system task scheduler entry and no hidden process: in the background Vaultic stays visible in the notification area (menu: Open, Back up now, Quit).
+- **Remembered password (optional)**: the "Remember the password on this computer" check box (Repositories page) puts the repository password in the system credential store (Windows Credential Manager; Linux `secret-tool`/libsecret; macOS not supported yet). Vaultic only writes the "remembered" flag to `vaultic.json`, never the password. Unticking the box, or forgetting the repository, erases the password from the system. Without the box nothing changes: the password is typed at every launch.
+- **Background (Settings)**: "Closing the window minimises Vaultic to the notification area" and "Start Vaultic with my session" (per-user Windows startup entry, XDG file on Linux, LaunchAgent on macOS; started with `--background`, window hidden).
+- **Stale backup alert**: when the last successful backup is more than twice the scheduled interval old, a warning appears in the Automation tab and a notification (at most one per day) is sent. It never starts a backup.
 - Each schedule is bound to the repository selected when the schedule is saved. Switching the active repository never redirects the scheduled backup. The bound repository must be active and its **password must have been typed** (it is never saved), otherwise the backup remains overdue until the correct repository and credentials are available.
 - **No backlog**: when several slots were missed (application closed, computer asleep, clock changed) a single catch-up backup runs. Resuming after a pause catches nothing up.
 - **One restic operation at a time**: manual backups, scheduled backups and other operations share one engine. If it is busy, the scheduled backup is deferred by 5 minutes, at most 3 times, then **skipped and recorded** until the next slot. There is no silent retry after a failure.

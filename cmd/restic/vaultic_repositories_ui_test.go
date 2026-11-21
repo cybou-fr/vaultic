@@ -52,12 +52,13 @@ type reposFixture struct {
 	logs        []string
 	activated   int
 	failPersist error
+	store       *vaulticMemorySecretStore
 }
 
 func newReposFixture(t *testing.T) *reposFixture {
 	t.Helper()
 	test.NewTempApp(t)
-	f := &reposFixture{settings: &vaulticSettings{Repository: "/data/repo-a", Depots: []vaulticDepot{
+	f := &reposFixture{store: newVaulticMemorySecretStore(), settings: &vaulticSettings{Repository: "/data/repo-a", Depots: []vaulticDepot{
 		{Name: "A", Location: "/data/repo-a"}, {Name: "B", Location: "/data/repo-b"},
 	}}}
 	w := test.NewWindow(nil)
@@ -76,7 +77,7 @@ func newReposFixture(t *testing.T) *reposFixture {
 		Run: func(string, string, string, vaulticRunOptions, func(context.Context, global.Options) error, func() error) {
 			t.Fatal("no engine operation expected")
 		},
-		CancelRun: func() {}, Activated: func() { f.activated++ },
+		CancelRun: func() {}, Activated: func() { f.activated++ }, Secrets: f.store,
 	})
 	return f
 }

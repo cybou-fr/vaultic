@@ -382,10 +382,26 @@ func (c *vaulticCoordinator) Tick() {
 		if profile.Schedule == nil || !profile.Schedule.Active() {
 			continue
 		}
+		c.warnIfStale(profile, now)
 		if c.tickProfile(profile, now, loc) {
 			return // one engine operation at a time
 		}
 	}
+}
+
+// warnIfStale notifies, at most once a day per profile, that the last
+// successful backup is much older than the schedule says. It only warns.
+func (c *vaulticCoordinator) warnIfStale(profile vaulticBackupProfile, now time.Time) {
+	var last time.Time
+	if rec, ok := c.history.LastSuccessForRepository(profile.Name, profile.Schedule.Repository); ok {
+		last = rec.Ended
+	}
+	st := vaulticCheckStale(*profile.Schedule, last, now)
+	if !st.Stale {
+		return
+	}
+	c.notifier.Notify(vaulticNotifyOverdue, "stale|"+profile.Name+"|"+now.Format("2006-01-02"),
+		"Sauvegarde ancienne", vaulticStaleMessage(profile.Name, st))
 }
 
 // tickProfile returns true when it started a run.

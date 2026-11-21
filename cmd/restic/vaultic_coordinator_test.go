@@ -564,8 +564,17 @@ func TestVaulticNoBackupStartsWithoutCredentials(t *testing.T) {
 	// Several more slots pass: still no spam and no run.
 	h.clock.Advance(5 * time.Hour)
 	h.coord.Tick()
-	if len(h.records()) != 1 || len(h.notifications()) != 1 {
-		t.Fatalf("spam while waiting: %d records, %d notifications", len(h.records()), len(h.notifications()))
+	overdue, stale := 0, 0
+	for _, note := range h.notifications() {
+		switch {
+		case strings.Contains(note, "en retard"):
+			overdue++
+		case strings.Contains(note, "Sauvegarde ancienne"):
+			stale++ // a separate, once-a-day warning once protection is really old
+		}
+	}
+	if len(h.records()) != 1 || overdue != 1 || stale > 1 {
+		t.Fatalf("spam while waiting: %d records, %d overdue and %d stale notifications", len(h.records()), overdue, stale)
 	}
 	// The password becomes available: one catch-up run, then back to normal.
 	h.creds.Store(true)

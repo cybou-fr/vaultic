@@ -147,11 +147,16 @@ func vaulticSetButtonEnabled(button *widget.Button, enabled bool) {
 	}
 }
 
-func vaulticShowWindow(window fyne.Window, preferred, minimum fyne.Size) {
+// vaulticPrepareWindow gives the window its minimum size without showing it.
+func vaulticPrepareWindow(window fyne.Window, minimum fyne.Size) {
 	bounds := canvas.NewRectangle(color.Transparent)
 	bounds.SetMinSize(minimum)
 	window.SetContent(container.NewStack(bounds, window.Content()))
 	window.Resize(minimum)
+}
+
+func vaulticShowWindow(window fyne.Window, preferred, minimum fyne.Size) {
+	vaulticPrepareWindow(window, minimum)
 	window.CenterOnScreen()
 	window.Show()
 

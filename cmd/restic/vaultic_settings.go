@@ -19,6 +19,10 @@ type vaulticDepot struct {
 	// Non-secret connection history, shown in the repository list.
 	LastVerified      string `json:"last_verified,omitempty"` // RFC 3339, UTC
 	LastVerifiedState string `json:"last_verified_state,omitempty"`
+	// RememberPassword records that the user chose to keep this repository's
+	// password in the operating system's credential store. It is only a flag:
+	// the password itself is never written to Vaultic's settings.
+	RememberPassword bool `json:"remember_password,omitempty"`
 }
 
 type vaulticSettings struct {
@@ -29,8 +33,10 @@ type vaulticSettings struct {
 	ActiveProfile string                 `json:"active_backup_profile,omitempty"`
 	// Scheduling is paused as a whole (kept across restarts) and notification
 	// categories are chosen by the user. Neither contains credentials.
-	SchedulerPaused bool                `json:"scheduler_paused,omitempty"`
-	Notifications   *vaulticNotifyPrefs `json:"notifications,omitempty"`
+	SchedulerPaused bool `json:"scheduler_paused,omitempty"`
+	// CloseToTray hides the window instead of quitting when it is closed.
+	CloseToTray   bool                `json:"close_to_tray,omitempty"`
+	Notifications *vaulticNotifyPrefs `json:"notifications,omitempty"`
 }
 
 type vaulticBackupProfile struct {

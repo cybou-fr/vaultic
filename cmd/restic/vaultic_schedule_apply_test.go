@@ -73,7 +73,10 @@ func TestVaulticApplyScheduleManualRemovesTheSchedule(t *testing.T) {
 
 func TestVaulticPageBuildersAndNavigation(t *testing.T) {
 	newAutomationFixture(t) // initialises a Fyne test application
-	pages := []fyne.CanvasObject{vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage(), vaulticSettingsPage()}
+	pages := make([]fyne.CanvasObject, 8)
+	for i := range pages {
+		pages[i] = vaulticSettingsPage(widget.NewLabel("x"))
+	}
 	nav := vaulticNewNavigation(pages)
 	if len(nav.buttons) != len(vaulticNavLabels) || len(pages) != len(vaulticNavLabels) {
 		t.Fatal("one sidebar button per page expected")

@@ -74,6 +74,9 @@ type vaulticRepositoriesHooks struct {
 	// Activated runs after another repository became active, so views that
 	// show its data can reset.
 	Activated func()
+	// Secrets is the operating system's credential store. Nil selects the
+	// platform's own; tests pass a fake.
+	Secrets vaulticSecretStore
 }
 
 // vaulticRepositoriesController owns the saved repositories, the active one,
@@ -91,6 +94,10 @@ type vaulticRepositoriesController struct {
 	Setup    *vaulticStorageSetupUI
 
 	Verify, EditAuth, ClearAuth *widget.Button
+	// Remember keeps the active repository's password in the system store.
+	Remember *widget.Check
+	secrets  vaulticSecretStore
+	syncing  bool
 
 	rowButtons []*widget.Button
 	repoHooks  vaulticRepositoryHooks
@@ -102,7 +109,12 @@ func newVaulticRepositoriesController(settings *vaulticSettings, hooks vaulticRe
 	c.Value.Wrapping = fyne.TextWrapWord
 	c.updateLabel()
 	c.Password = widget.NewPasswordEntry()
-	c.Password.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré")
+	c.Password.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré dans Vaultic")
+	c.secrets = hooks.Secrets
+	if c.secrets == nil {
+		c.secrets = newVaulticSystemSecretStore()
+	}
+	c.Remember = widget.NewCheck("Mémoriser le mot de passe sur cet ordinateur ("+c.secrets.Name()+")", c.onRememberChanged)
 	c.ListBox = container.NewVBox()
 
 	c.Verify = widget.NewButton("Vérifier la connexion", func() { c.Test(c.active, c.Password.Text, false) })
@@ -135,6 +147,7 @@ func newVaulticRepositoriesController(settings *vaulticSettings, hooks vaulticRe
 		CancelEdit: func() { c.editing = ""; c.Setup.Reset() },
 	})
 	c.Setup.SetBusy(hooks.Busy())
+	c.syncRemember()
 	return c
 }
 
@@ -172,6 +185,12 @@ func (c *vaulticRepositoriesController) UpdateState(busy bool) {
 	vaulticSetButtonEnabled(c.Verify, !busy && c.active != "")
 	vaulticSetButtonEnabled(c.EditAuth, !busy && vaulticSupportsSessionAuth(c.active))
 	vaulticSetButtonEnabled(c.ClearAuth, !busy && c.active != "" && c.Sessions.get(c.active).hasSecret())
+	_, savedActive := c.savedDepot(c.active)
+	if !busy && savedActive && c.secrets.Available() {
+		c.Remember.Enable()
+	} else {
+		c.Remember.Disable()
+	}
 	for _, b := range c.rowButtons {
 		vaulticSetButtonEnabled(b, !busy)
 	}
@@ -189,6 +208,10 @@ func (c *vaulticRepositoriesController) Activate(address, password string) {
 	c.active = address
 	c.Password.SetText(password)
 	c.updateLabel()
+	c.syncRemember()
+	if password == "" {
+		c.LoadRemembered()
+	}
 	if c.hooks.Activated != nil {
 		c.hooks.Activated()
 	}
@@ -208,6 +231,7 @@ func (c *vaulticRepositoriesController) Refresh() {
 	}
 	c.ListBox.Objects = rows
 	c.ListBox.Refresh()
+	c.syncRemember()
 	c.hooks.UpdateActions()
 }
 
@@ -363,6 +387,7 @@ func (c *vaulticRepositoriesController) saveEdited(setup vaulticStorageSetup) {
 	}
 	c.settings.Depots = updated
 	if old != address {
+		c.moveRemembered(old, address)
 		c.Sessions.forget(old)
 		if setup.Auth.hasValues() {
 			if err := c.Sessions.set(address, setup.Auth); err != nil {
@@ -504,6 +529,11 @@ func (c *vaulticRepositoriesController) forget(depot vaulticDepot) {
 			}
 			c.settings.Depots = next
 			c.Sessions.forget(location)
+			if depot.RememberPassword {
+				if err := c.secrets.Delete(vaulticSecretKey(location)); err != nil {
+					c.hooks.Log("Mot de passe mémorisé non effacé : " + err.Error())
+				}
+			}
 			if c.active == location {
 				c.Activate(active, "")
 			}

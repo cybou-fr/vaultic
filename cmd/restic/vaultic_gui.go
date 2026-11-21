@@ -173,7 +173,7 @@ func vaulticRestoreTarget(target string) (string, error) {
 	return canonical, nil
 }
 
-func vaulticMain() {
+func vaulticMain(startHidden bool) {
 	a := app.NewWithID("fr.cybou.vaultic")
 	a.SetIcon(vaulticAppIcon())
 	a.Settings().SetTheme(&vaulticVisualTheme{})
@@ -389,7 +389,8 @@ func vaulticMain() {
 	})
 	repositoriesPage := vaulticRepositoriesPage(vaulticRepositoriesParts{
 		SavedList: repos.ListBox, ActiveRepository: repos.Value, Password: repos.Password,
-		Verify: repos.Verify, EditAuth: repos.EditAuth, ClearAuth: repos.ClearAuth,
+		Remember: repos.Remember,
+		Verify:   repos.Verify, EditAuth: repos.EditAuth, ClearAuth: repos.ClearAuth,
 		Setup: repos.Setup.Content,
 	})
 	automationUI = newVaulticAutomationUI(vaulticAutomationHooks{
@@ -447,7 +448,16 @@ func vaulticMain() {
 	})
 	checkPage := vaulticIntegrityPage(maintenance.Check)
 	journalPage := vaulticActivityPage(logView.Entry, logView.Clear)
-	settingsPage := vaulticSettingsPage()
+	tray, trayOK := newVaulticTray(a)
+	background := newVaulticBackgroundController(vaulticBackgroundHooks{
+		Window: w, Settings: &saved,
+		Persist:       func() error { return persist(saved.Depots, repos.Active()) },
+		Autostart:     newVaulticSystemAutostart(),
+		Executable:    os.Executable,
+		TrayAvailable: trayOK,
+		Log:           appendLog,
+	})
+	settingsPage := vaulticSettingsPage(background.Content)
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
 	stopFocusFollow = vaulticKeepFocusVisible(w, []*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage, automationScroll})
@@ -465,14 +475,49 @@ func vaulticMain() {
 	}
 	windowContent = container.NewBorder(nil, container.NewPadded(statusBar), nav.Sidebar, nil, nav.Pages)
 	repos.Refresh()
+	repos.LoadRemembered()
 	profiles.Refresh()
 	w.SetContent(windowContent)
+	windowShown := false
+	reveal := func() {
+		if !windowShown {
+			windowShown = true
+			vaulticShowWindow(w, fyne.NewSize(1180, 760), fyne.NewSize(640, 365))
+		} else {
+			w.Show()
+		}
+		w.RequestFocus()
+	}
+	trayNoticeShown := false
 	closer := &vaulticWindowCloser{
+		HideToTray: func() bool {
+			if !background.ShouldHideOnClose() || !tray.Installed() {
+				return false
+			}
+			w.Hide()
+			if !trayNoticeShown {
+				trayNoticeShown = true
+				a.SendNotification(&fyne.Notification{Title: "Vaultic continue en arrière-plan",
+					Content: "Les sauvegardes planifiées restent actives. Pour quitter : clic droit sur l'icône, « Quitter Vaultic »."})
+			}
+			return true
+		},
 		Busy: busy.Load, Closing: runner.Closing, BeginClose: runner.BeginClose,
 		CloseNow: closeWindow, Confirm: vaulticConfirm(w),
 	}
 	w.SetCloseIntercept(closer.Intercept)
-	vaulticShowWindow(w, fyne.NewSize(1180, 760), fyne.NewSize(640, 365))
+	if trayOK {
+		tray.Install(vaulticAppIcon(), vaulticTrayHooks{
+			Show: func() { fyne.Do(reveal) },
+			BackupNow: func() {
+				fyne.Do(func() { backup.Launch(vaulticTriggerManual, profiles.Current().Name, time.Time{}, false) })
+			},
+			Quit: func() { fyne.Do(closer.Quit) },
+		})
+	}
+	if !(startHidden && tray.Installed()) {
+		reveal()
+	}
 	if settingsErr != nil {
 		dialog.ShowError(fmt.Errorf("Enregistrement des préférences désactivé pour cette session : %w", settingsErr), w)
 	}

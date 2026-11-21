@@ -109,12 +109,25 @@ type vaulticWindowCloser struct {
 	CloseNow   func()
 	// Confirm asks the user and reports the answer.
 	Confirm func(title, message string, answer func(bool))
+	// HideToTray hides the window and reports true when the user chose to keep
+	// Vaultic running in the notification area. Nil means never.
+	HideToTray func() bool
 
 	prompting bool
 }
 
-// Intercept is the window's close handler.
+// Intercept is the window's close handler: it may hide the window instead of
+// quitting.
 func (c *vaulticWindowCloser) Intercept() {
+	if c.HideToTray != nil && !c.Closing() && c.HideToTray() {
+		return
+	}
+	c.Quit()
+}
+
+// Quit leaves Vaultic: at once when idle, otherwise after asking and
+// cancelling the running operation.
+func (c *vaulticWindowCloser) Quit() {
 	if c.Closing() || c.prompting {
 		return
 	}

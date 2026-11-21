@@ -39,7 +39,16 @@ Goal: prove that backup and restore are correct on real data.
 - Acceptance: all of the above pass locally and the report lists every file
   that could not be read.
 
-## Stage 2 — Unattended backups
+## Stage 2 — Unattended backups (implemented, 2026-11-22)
+
+Done: optional per-repository password in the OS credential store (Windows
+Credential Manager verified for real, Linux `secret-tool` compiled and
+argument-tested only, macOS Keychain not wired); tray icon with Open / Back
+up now / Quit; close-to-tray; optional per-user autostart started with
+`--background` (Windows registry verified for real, XDG/LaunchAgent files
+tested on temporary folders); stale-backup warning and daily notification.
+Not verified: the tray menu clicks and the autostart toggle in the real
+window, and everything on Linux/macOS.
 
 - [ ] Optional password storage in the OS credential store (Windows Credential
       Manager, macOS Keychain, Secret Service), per repository, explicit

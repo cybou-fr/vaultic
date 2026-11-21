@@ -396,6 +396,20 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 			out.Warning = "Le dépôt de destination n'est pas actif. Activez-le sur la page Dépôts avant la prochaine sauvegarde."
 		}
 	}
+	if profile.Schedule != nil && profile.Schedule.Active() {
+		var last time.Time
+		if rec, ok := h.History.LastSuccessForRepository(profile.Name, repo); ok {
+			last = rec.Ended
+		}
+		if st := vaulticCheckStale(*profile.Schedule, last, now); st.Stale {
+			note := vaulticStaleMessage(profile.Name, st)
+			if out.Warning != "" {
+				out.Warning += "\n" + note
+			} else {
+				out.Warning = note
+			}
+		}
+	}
 	if h.Coordinator != nil {
 		if problem := h.Coordinator.PersistenceProblem(); problem != "" {
 			note := "Enregistrement impossible : " + problem + " Libérez de l'espace ou vérifiez les droits du dossier de configuration."

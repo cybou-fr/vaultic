@@ -161,7 +161,11 @@ func printExitError(globalOptions global.Options, code int, message string) {
 
 func main() {
 	if len(os.Args) == 1 {
-		vaulticMain()
+		vaulticMain(false)
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == vaulticBackgroundFlag {
+		vaulticMain(true)
 		return
 	}
 	tweakGoGC()

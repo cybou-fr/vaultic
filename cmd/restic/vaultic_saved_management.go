@@ -143,6 +143,18 @@ func vaulticRecordVerification(depots []vaulticDepot, location string, state vau
 	return out
 }
 
+// vaulticSetRememberPassword returns a copy of depots with the remember flag of
+// the repository at location set to on.
+func vaulticSetRememberPassword(depots []vaulticDepot, location string, on bool) []vaulticDepot {
+	out := append([]vaulticDepot(nil), depots...)
+	for i := range out {
+		if out[i].Location == location {
+			out[i].RememberPassword = on
+		}
+	}
+	return out
+}
+
 func vaulticVerificationSummary(depot vaulticDepot) string {
 	at, err := time.Parse(time.RFC3339, depot.LastVerified)
 	if err != nil {
