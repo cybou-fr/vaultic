@@ -1,0 +1,80 @@
+# Vaultic roadmap
+
+Constraints that stay in force: work on `main` only, no CI / GitHub Actions,
+commit after local verification, Go + Fyne + the embedded restic engine,
+secrets are never written to settings, history or logs.
+
+Decisions taken (2026-11-21):
+
+- A tray icon and an opt-in autostart are allowed (stage 2). This replaces the
+  rule "backups only run while the Vaultic window is open" by "only while the
+  Vaultic process runs"; the process stays visible in the tray. Still no
+  Windows service and no entry in the operating system's task scheduler.
+- A retention policy with deletion of snapshots is allowed (stage 3), but only
+  behind a mandatory preview and an explicit confirmation.
+- Linux and macOS stay supported platforms; they must be built and checked
+  (stage 5) instead of being dropped from the README.
+
+## Stage 1 — Trust (in progress)
+
+Goal: prove that backup and restore are correct on real data.
+
+- [x] End-to-end restore test (`vaultic_restore_e2e_test.go`): sizes around
+      block boundaries, empty files and folders, Unicode names, deep paths ->
+      backup -> restore -> byte-for-byte comparison, incremental snapshots,
+      wrong password, Cyrillic repository / source / destination.
+- [x] Windows scenarios (`vaultic_restore_e2e_windows_test.go`): a file locked
+      by another process makes the backup "Incomplète", never "Réussie", and
+      the readable files restore exactly; paths over 300 characters round trip.
+- [ ] Unplugged disk during a backup (the pre-check exists; no mid-run test).
+- [x] Live backend test (`vaultic_backends_live_test.go`): skipped by default;
+      with `VAULTIC_LIVE_S3`, `_REST`, `_AZURE`, `_GS` (see the file header) it
+      runs init, probe, backup, restore, check and a wrong-password probe
+      against an emulator or a real test account. Validated against a local
+      folder only; no emulator has been run yet.
+- [ ] Run the live test against MinIO (S3), Azurite (Azure), fake-gcs-server
+      (GCS) and rest-server. The executables must be downloaded first, which
+      needs explicit approval (name, source and size are listed before any
+      download).
+- Acceptance: all of the above pass locally and the report lists every file
+  that could not be read.
+
+## Stage 2 — Unattended backups
+
+- [ ] Optional password storage in the OS credential store (Windows Credential
+      Manager, macOS Keychain, Secret Service), per repository, explicit
+      consent, "forget" button. Default behaviour unchanged.
+- [ ] Tray icon, close-to-tray, optional per-user autostart.
+- [ ] "Last backup is too old" alert (older than twice the schedule).
+- Acceptance: after a reboot a scheduled backup runs without typing the
+  password (only if the user allowed storing it) and shows in the history.
+
+## Stage 3 — Retention
+
+- [ ] "Retention" tab: keep last N / daily / weekly / monthly rules.
+- [ ] Mandatory preview of what would be deleted, explicit confirmation,
+      separate prune step, locked while a backup runs.
+- Acceptance: the preview equals the result on a test repository and every
+  deletion is written to the history.
+
+## Stage 4 — Quality and accessibility (parallel)
+
+- [ ] `scripts/check.py`: gofmt on committed content (CRLF aware), vet, tests,
+      race detector, build.
+- [ ] Interface strings moved to a catalog; English translation.
+- [ ] Visible focus for check boxes, keyboard navigation, high DPI.
+- [ ] Dependency review and local vulnerability scan.
+- [ ] Stop tracking `portable.flag` at the repository root.
+
+## Stage 5 — Distribution
+
+- [ ] Build and verify on Linux and macOS.
+- [ ] Windows installer, code signing, version shown in the About page.
+- [ ] Manual "check for updates" (no background downloads).
+
+## Stage 6 — Extensions (on demand)
+
+Bandwidth limit and process priority, exclusion presets, snapshot tags and
+notes, search across snapshots, repository key management, restore to the
+original location with a conflict policy, mail / webhook notifications,
+several repositories per profile (3-2-1).
