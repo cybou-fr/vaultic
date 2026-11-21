@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -183,20 +182,7 @@ func vaulticMain() {
 
 	saved, settingsErr := vaulticLoadSettings()
 	initialProfile := saved.migrateBackupProfiles()
-	// Migrate existing schedules once: their old implicit destination was
-	// the active repository. Subsequent changes must not silently retarget it.
-	for i := range saved.Profiles {
-		if schedule := saved.Profiles[i].Schedule; schedule != nil && schedule.Repository == "" {
-			schedule.Repository = saved.Repository
-		}
-	}
-	for _, profile := range saved.Profiles {
-		for i, source := range profile.Sources {
-			if !filepath.IsAbs(source) {
-				profile.Sources[i] = vaulticResolvedRepository(source)
-			}
-		}
-	}
+	vaulticPrepareLoadedSettings(&saved)
 	var snapshots *vaulticSnapshotsController
 	var profiles *vaulticProfilesController
 	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -217,22 +203,7 @@ func vaulticMain() {
 		if settingsErr != nil {
 			return settingsErr
 		}
-		stored := make([]vaulticBackupProfile, len(saved.Profiles))
-		for i, profile := range saved.Profiles {
-			storedSources := make([]string, len(profile.Sources))
-			for j, source := range profile.Sources {
-				storedSources[j] = vaulticPortablePath(source)
-			}
-			stored[i] = vaulticBackupProfile{
-				Name: profile.Name, Sources: storedSources, Excludes: append([]string(nil), profile.Excludes...),
-				Schedule: vaulticCloneSchedule(profile.Schedule),
-			}
-		}
-		return vaulticSaveSettings(vaulticSettings{
-			Repository: active, Depots: depots, Sources: stored[profiles.Index()].Sources,
-			Profiles: stored, ActiveProfile: stored[profiles.Index()].Name,
-			SchedulerPaused: saved.SchedulerPaused, Notifications: saved.Notifications,
-		})
+		return vaulticSaveSettings(vaulticSettingsForSave(saved, depots, active, profiles.Index()))
 	}
 	save := func() {
 		if err := persist(saved.Depots, repos.Active()); err != nil {
@@ -245,7 +216,7 @@ func vaulticMain() {
 	if err := historyStore.Load(); err != nil {
 		appendLog(err.Error())
 	}
-	var coord *vaulticCoordinator
+	var backup *vaulticBackupController
 	var automationUI *vaulticAutomationUI
 	var notifyPrefs atomic.Pointer[vaulticNotifyPrefs]
 	{
@@ -255,14 +226,11 @@ func vaulticMain() {
 		}
 		notifyPrefs.Store(&prefs)
 	}
-	stopScheduler := make(chan struct{})
-	var stopSchedulerOnce sync.Once
 	closePrompt := false
 	var stopFocusFollow func()
 	closeWindow := func() {
-		stopSchedulerOnce.Do(func() { close(stopScheduler) })
-		if coord != nil {
-			coord.Shutdown(15 * time.Second)
+		if backup != nil {
+			backup.Shutdown()
 		}
 		if stopFocusFollow != nil {
 			stopFocusFollow()
@@ -277,14 +245,6 @@ func vaulticMain() {
 	var actionButtons []*widget.Button
 	var updateActions func()
 	var windowContent *fyne.Container
-	var lastBackupReport string
-	showBackupReport := func() {
-		content := container.NewVScroll(vaulticWrappedLabel(lastBackupReport))
-		content.SetMinSize(fyne.NewSize(340, 170))
-		reportDialog := dialog.NewCustom("Rapport de sauvegarde", "Fermer", content, w)
-		reportDialog.Resize(fyne.NewSize(490, 300))
-		reportDialog.Show()
-	}
 	setBusy := func(on bool) {
 		if on {
 			panel.Busy()
@@ -364,162 +324,32 @@ func vaulticMain() {
 			runner.Run(title, repos.Active(), repos.Password.Text, vaulticRunOptions{}, fn, done)
 		},
 	})
-	// Every backup, manual or scheduled, goes through the coordinator: one
-	// engine operation at a time, one history, one set of notifications.
-	launchBackup := func(trigger, profileName string, slot time.Time, catchUp bool) bool {
-		var profile vaulticBackupProfile
-		found := false
-		for _, candidate := range saved.Profiles {
-			if candidate.Name == profileName {
-				profile, found = candidate, true
-			}
-		}
-		manual := trigger == vaulticTriggerManual
-		if !found || len(profile.Sources) == 0 {
-			return false
-		}
-		if repos.Active() == "" || repos.Password.Text == "" {
-			if manual {
-				dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
-			}
-			return false
-		}
-		if !coord.TryAcquire() {
-			if manual {
-				dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", w)
-			}
-			return false
-		}
-		repo, password := repos.Active(), repos.Password.Text
-		cloudAuth := repos.Sessions.get(repo)
-		redact := vaulticRedactCloudSecrets(vaulticRedactOperation(password), cloudAuth)
-		title := "Sauvegarde"
-		if !manual {
-			title = "Sauvegarde planifiée"
-		}
-		runner.SetCancel(coord.Cancel)
-		panel.Reserve()
-		setBusy(true)
-		panel.Progress.SetValue(0)
-		status.SetText(title + "…")
-		appendLog("Début : " + title + " — profil « " + profileName + " »")
-		gopts := global.Options{
-			Repo: vaulticResolvedRepository(repo), Password: password, Backends: vaulticBackendsForSession(cloudAuth),
-			JSON: true, Verbosity: 1,
-		}
-		exec := vaulticBackupExecutor(gopts, append([]string(nil), profile.Sources...), append([]string(nil), profile.Excludes...),
-			func(report *vaulticBackupReport, line string) {
-				runner.Handle(context.Background(), title, line, report, redact)
-			})
-		job := vaulticJob{Profile: profileName, Repository: repo, Trigger: trigger, Slot: slot, CatchUp: catchUp, Redact: redact}
-		go func() {
-			record := coord.RunAcquired(job, exec)
-			fyne.Do(func() {
-				runner.SetCancel(nil)
-				lastBackupReport = coord.LastReport()
-				status.SetText(title + " · " + vaulticStatusLabel(record.Status))
-				appendLog(title + " · " + lastBackupReport)
-				if record.Status == vaulticStatusSuccess {
-					recentRunValue.SetText(title)
-				}
-				setBusy(false)
-				if runner.Closing() {
-					closeWindow()
-					return
-				}
-				if manual {
-					showBackupReport()
-				}
-				if automationUI != nil {
-					automationUI.Refresh()
-				}
-			})
-		}()
-		return true
-	}
-	backupButton := widget.NewButton("Sauvegarder maintenant", func() {
-		launchBackup(vaulticTriggerManual, profiles.Current().Name, time.Time{}, false)
-	})
-	// UI-owned settings are changed on the Fyne thread. A worker waits until
-	// persistence finishes, so the slot is durable before releasing the gate.
-	saveScheduleSlot := func(profile string, slot time.Time) error {
-		for i := range saved.Profiles {
-			if saved.Profiles[i].Name == profile && saved.Profiles[i].Schedule != nil {
-				// Advance the in-memory anchor even on a disk error: the same
-				// run must not be launched every 15 seconds in this session.
-				// Persistence failures are surfaced by the coordinator.
-				saved.Profiles[i].Schedule.LastSlot = slot.Format(time.RFC3339)
-				if err := persist(saved.Depots, repos.Active()); err != nil {
-					return err
-				}
-				return nil
-			}
-		}
-		return fmt.Errorf("Profil planifié introuvable : %s", profile)
-	}
-	coord = newVaulticCoordinator(&busy, vaulticCoordinatorEnv{
-		Now:      time.Now,
-		Location: func() *time.Location { return time.Local },
-		Profiles: func() []vaulticBackupProfile {
-			out := make([]vaulticBackupProfile, len(saved.Profiles))
-			for i, p := range saved.Profiles {
-				out[i] = p
-				out[i].Schedule = vaulticCloneSchedule(p.Schedule)
-			}
-			return out
-		},
-		Repository:     func() string { return repos.Active() },
-		HasCredentials: func() bool { return repos.Password.Text != "" },
-		Paused:         func() bool { return saved.SchedulerPaused },
-		SaveSlot:       saveScheduleSlot,
-		SaveSlotWorker: func(profile string, slot time.Time) error {
-			var saveErr error
-			fyne.DoAndWait(func() { saveErr = saveScheduleSlot(profile, slot) })
-			return saveErr
-		},
-		Start: func(job vaulticJob) bool { return launchBackup(job.Trigger, job.Profile, job.Slot, job.CatchUp) },
-	}, historyStore, newVaulticNotifier(
-		func() vaulticNotifyPrefs { return *notifyPrefs.Load() },
-		func(title, body string) {
-			fyne.Do(func() { a.SendNotification(&fyne.Notification{Title: title, Content: body}) })
-		},
-		time.Now,
-	))
-	coord.OnChange = func() {
-		fyne.Do(func() {
+	backup = newVaulticBackupController(vaulticBackupHooks{
+		Window:        w,
+		App:           a,
+		Settings:      &saved,
+		Persist:       func() error { return persist(saved.Depots, repos.Active()) },
+		Repository:    func() string { return repos.Active() },
+		Password:      func() string { return repos.Password.Text },
+		CloudAuth:     func(repo string) vaulticCloudAuth { return repos.Sessions.get(repo) },
+		ProfileName:   func() string { return profiles.Current().Name },
+		History:       historyStore,
+		NotifyPrefs:   func() vaulticNotifyPrefs { return *notifyPrefs.Load() },
+		Runner:        runner,
+		Panel:         panel,
+		Busy:          &busy,
+		SetBusy:       setBusy,
+		Log:           appendLog,
+		CloseNow:      closeWindow,
+		Completed:     recentRunValue.SetText,
+		UpdateActions: func() { updateActions() },
+		RefreshAutomation: func() {
 			if automationUI != nil {
 				automationUI.Refresh()
 			}
-			updateActions()
-		})
-	}
-	coord.OnPersistenceError = func(err error) {
-		fyne.Do(func() {
-			appendLog("Erreur de sauvegarde des métadonnées : " + err.Error())
-			status.SetText("Attention : historique ou planification non enregistré(e).")
-		})
-	}
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		first := time.After(8 * time.Second)
-		for {
-			select {
-			case <-stopScheduler:
-				return
-			case <-first:
-			case <-ticker.C:
-			}
-			fyne.Do(func() {
-				coord.Tick()
-				if automationUI != nil {
-					automationUI.Refresh()
-				}
-			})
-		}
-	}()
-	backupReportButton := widget.NewButton("Dernier rapport…", showBackupReport)
-	backupButton.Importance = widget.HighImportance
+		},
+	})
+	backup.StartScheduler()
 
 	snapshots = newVaulticSnapshotsController(vaulticSnapshotsHooks{
 		Window:           w,
@@ -567,8 +397,7 @@ func vaulticMain() {
 			profiles.Empty.Hide()
 		}
 		snapshots.UpdateState(busy.Load())
-		vaulticSetButtonEnabled(backupButton, !busy.Load() && len(profiles.Sources()) > 0)
-		vaulticSetButtonEnabled(backupReportButton, !busy.Load() && lastBackupReport != "")
+		backup.UpdateState(busy.Load(), len(profiles.Sources()) > 0)
 		vaulticSetButtonEnabled(profiles.Exclusions, !busy.Load())
 		vaulticSetButtonEnabled(profiles.Preview, !busy.Load() && len(profiles.Sources()) > 0 && len(profiles.Current().Excludes) > 0)
 		vaulticSetButtonEnabled(profiles.Duplicate, !busy.Load())
@@ -616,7 +445,7 @@ func vaulticMain() {
 		SetPaused: func(paused bool) {
 			saved.SchedulerPaused = paused
 			if !paused {
-				coord.Resume()
+				backup.Coord.Resume()
 			} // nothing missed during a pause is made up afterwards
 			if err := persist(saved.Depots, repos.Active()); err != nil {
 				appendLog("Erreur d'enregistrement des préférences : " + err.Error())
@@ -631,7 +460,7 @@ func vaulticMain() {
 				appendLog("Erreur d'enregistrement des préférences : " + err.Error())
 			}
 		},
-		Coordinator: coord, History: historyStore, Now: time.Now,
+		Coordinator: backup.Coord, History: historyStore, Now: time.Now,
 		ActiveRepository: func() string { return repos.Active() },
 		Credentials:      func() bool { return repos.Password.Text != "" },
 		Location:         func() *time.Location { return time.Local },
@@ -640,7 +469,7 @@ func vaulticMain() {
 		Profile: profiles.Select, NewProfile: profiles.New, RenameProfile: profiles.Rename,
 		DuplicateProfile: profiles.Duplicate, DeleteProfile: profiles.Delete,
 		Exclusions: profiles.Exclusions, PreviewExclusions: profiles.Preview, ExclusionSummary: profiles.ExclusionSummary,
-		Sources: profiles.Section, BackupNow: backupButton, LastReport: backupReportButton,
+		Sources: profiles.Section, BackupNow: backup.BackupButton, LastReport: backup.ReportButton,
 	}, automationUI.Content)
 	snapshotPage := vaulticSnapshotPage(vaulticSnapshotParts{
 		Refresh: snapshots.Refresh, Details: snapshots.DetailsScroll,

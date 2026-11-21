@@ -66,8 +66,9 @@ func (r *vaulticEngineRunner) Closing() bool { return r.closing }
 // RequestCancel stops the running operation, if any.
 func (r *vaulticEngineRunner) RequestCancel() {
 	if r.cancel != nil {
-		r.cancel()
+		// Status first: the operation reports its own end once cancelled.
 		r.hooks.Panel.Status.SetText("Annulation…")
+		r.cancel()
 	}
 }
 
@@ -78,8 +79,8 @@ func (r *vaulticEngineRunner) BeginClose() bool {
 		return false
 	}
 	r.closing = true
-	r.cancel()
 	r.hooks.Panel.Status.SetText("Annulation avant fermeture…")
+	r.cancel()
 	return true
 }
 

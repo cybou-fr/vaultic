@@ -177,7 +177,10 @@ func TestVaulticRunnerCancelAndClose(t *testing.T) {
 	if !f.r.BeginClose() || !f.r.Closing() {
 		t.Fatal("BeginClose must cancel a running operation")
 	}
-	f.waitIdle(t)
+	deadline := time.Now().Add(5 * time.Second)
+	for f.closed.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if f.closed.Load() != 1 || !finished {
 		t.Fatalf("window must close after the operation ended: closed=%d finished=%v", f.closed.Load(), finished)
 	}
