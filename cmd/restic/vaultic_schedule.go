@@ -40,15 +40,13 @@ type vaulticSchedule struct {
 	LastSlot string `json:"last_slot,omitempty"`
 }
 
-var vaulticFrenchWeekdays = [...]string{"dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"}
-
 func (s vaulticSchedule) Active() bool {
 	return s.Enabled && s.Kind != "" && s.Kind != vaulticScheduleManual
 }
 
 func vaulticParseClock(value string) (hour, minute int, err error) {
 	if _, scanErr := fmt.Sscanf(value, "%2d:%2d", &hour, &minute); scanErr != nil || len(value) != 5 || value[2] != ':' || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-		return 0, 0, errors.New("Indiquez l'heure au format HH:MM (00:00 à 23:59).")
+		return 0, 0, errors.New(vaulticT("Indiquez l'heure au format HH:MM (00:00 à 23:59)."))
 	}
 	return hour, minute, nil
 }
@@ -59,7 +57,7 @@ func (s vaulticSchedule) Validate() error {
 		return nil
 	case vaulticScheduleHourly:
 		if s.EveryHours < 1 || s.EveryHours > 24*7 {
-			return errors.New("L'intervalle doit être compris entre 1 et 168 heures.")
+			return errors.New(vaulticT("L'intervalle doit être compris entre 1 et 168 heures."))
 		}
 	case vaulticScheduleDaily:
 		_, _, err := vaulticParseClock(s.Time)
@@ -69,11 +67,11 @@ func (s vaulticSchedule) Validate() error {
 			return err
 		}
 		if len(s.Weekdays) == 0 {
-			return errors.New("Choisissez au moins un jour de la semaine.")
+			return errors.New(vaulticT("Choisissez au moins un jour de la semaine."))
 		}
 		for _, day := range s.Weekdays {
 			if day < 0 || day > 6 {
-				return errors.New("Jour de la semaine invalide.")
+				return errors.New(vaulticT("Jour de la semaine invalide."))
 			}
 		}
 	case vaulticScheduleMonthly:
@@ -81,10 +79,10 @@ func (s vaulticSchedule) Validate() error {
 			return err
 		}
 		if s.MonthDay < 1 || s.MonthDay > 31 {
-			return errors.New("Le jour du mois doit être compris entre 1 et 31.")
+			return errors.New(vaulticT("Le jour du mois doit être compris entre 1 et 31."))
 		}
 	default:
-		return errors.New("Fréquence de sauvegarde inconnue.")
+		return errors.New(vaulticT("Fréquence de sauvegarde inconnue."))
 	}
 	return nil
 }
@@ -94,29 +92,29 @@ func (s vaulticSchedule) Describe() string {
 	switch s.Kind {
 	case vaulticScheduleHourly:
 		if s.EveryHours == 1 {
-			return "Toutes les heures"
+			return vaulticT("Toutes les heures")
 		}
-		return fmt.Sprintf("Toutes les %d heures", s.EveryHours)
+		return fmt.Sprintf(vaulticT("Toutes les %d heures"), s.EveryHours)
 	case vaulticScheduleDaily:
-		return "Chaque jour à " + s.Time
+		return vaulticT("Chaque jour à ") + s.Time
 	case vaulticScheduleWeekly:
 		days := append([]int(nil), s.Weekdays...)
 		sort.Slice(days, func(i, j int) bool { return (days[i]+6)%7 < (days[j]+6)%7 }) // Monday first
 		names := make([]string, 0, len(days))
 		for _, day := range days {
 			if day >= 0 && day <= 6 {
-				names = append(names, vaulticFrenchWeekdays[day])
+				names = append(names, vaulticWeekdayName(day))
 			}
 		}
-		return "Chaque semaine : " + strings.Join(names, ", ") + " à " + s.Time
+		return vaulticT("Chaque semaine : ") + strings.Join(names, ", ") + vaulticT(" à ") + s.Time
 	case vaulticScheduleMonthly:
-		text := fmt.Sprintf("Chaque mois le %d à %s", s.MonthDay, s.Time)
+		text := fmt.Sprintf(vaulticT("Chaque mois le %d à %s"), s.MonthDay, s.Time)
 		if s.MonthDay > 28 {
-			text += " (dernier jour si le mois est plus court)"
+			text += vaulticT(" (dernier jour si le mois est plus court)")
 		}
 		return text
 	}
-	return "Manuel uniquement"
+	return vaulticT("Manuel uniquement")
 }
 
 func (s vaulticSchedule) lastSlot() (time.Time, bool) {

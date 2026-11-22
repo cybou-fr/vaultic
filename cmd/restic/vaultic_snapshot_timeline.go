@@ -20,15 +20,15 @@ func vaulticTimelineRow(snapshot vaulticSnapshot, previous *vaulticSnapshot, met
 	title += snapshot.Time.Local().Format("15:04")
 	host := snapshot.Hostname
 	if host == "" {
-		host = "Machine non renseignée"
+		host = vaulticT("Machine non renseignée")
 	}
 	shortID := snapshot.ShortID
 	if shortID == "" {
 		shortID = snapshot.ID[:min(len(snapshot.ID), 12)]
 	}
-	subtitle := fmt.Sprintf("      %s   ·   %s", shortID, host)
+	subtitle := fmt.Sprintf(vaulticT("      %s   ·   %s"), shortID, host)
 	if metrics != nil {
-		subtitle += fmt.Sprintf("   ·   %d fichiers   ·   %s", metrics.Files, vaulticBytes(metrics.LogicalFileBytes))
+		subtitle += fmt.Sprintf(vaulticT("   ·   %d fichiers   ·   %s"), metrics.Files, vaulticBytes(metrics.LogicalFileBytes))
 	}
 	return title, subtitle
 }

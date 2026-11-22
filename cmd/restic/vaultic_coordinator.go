@@ -180,7 +180,7 @@ func (c *vaulticCoordinator) PersistenceProblem() string {
 func (c *vaulticCoordinator) Execute(job vaulticJob, exec vaulticExec) (vaulticRunRecord, bool) {
 	if !c.TryAcquire() {
 		if job.Trigger == vaulticTriggerScheduled {
-			return c.recordSkipped(job, "Le moteur de sauvegarde était occupé."), false
+			return c.recordSkipped(job, vaulticT("Le moteur de sauvegarde était occupé.")), false
 		}
 		return vaulticRunRecord{}, false
 	}
@@ -206,7 +206,7 @@ func (c *vaulticCoordinator) RunAcquired(job vaulticJob, exec vaulticExec) (reco
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
-				err = errors.New("Erreur interne pendant la sauvegarde.")
+				err = errors.New(vaulticT("Erreur interne pendant la sauvegarde."))
 			}
 		}()
 		err = exec(ctx, report)
@@ -236,13 +236,13 @@ func (c *vaulticCoordinator) RunAcquired(job vaulticJob, exec vaulticExec) (reco
 		if saveSlot != nil {
 			if e := saveSlot(job.Profile, job.Slot); e != nil {
 				persistFailed = true
-				c.persistenceError(fmt.Errorf("créneau de sauvegarde non enregistré : %w", e))
+				c.persistenceError(fmt.Errorf(vaulticT("créneau de sauvegarde non enregistré : %w"), e))
 			}
 		}
 	}
 	if e := c.history.Append(record); e != nil {
 		persistFailed = true
-		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+		c.persistenceError(fmt.Errorf(vaulticT("historique non enregistré : %w"), e))
 	}
 	c.notifyRecord(record)
 	c.mu.Lock()
@@ -288,7 +288,7 @@ func (c *vaulticCoordinator) buildRecord(job vaulticJob, report *vaulticBackupRe
 		// result() only returns nil when restic confirmed a snapshot.
 		record.Status, record.SnapshotID = vaulticStatusSuccess, summary.SnapshotID
 	case errors.Is(err, context.Canceled):
-		record.Status, record.Summary = vaulticStatusCancelled, "Interrompue avant la fin ; aucun instantané confirmé."
+		record.Status, record.Summary = vaulticStatusCancelled, vaulticT("Interrompue avant la fin ; aucun instantané confirmé.")
 	default:
 		record.Status = vaulticStatusFailure
 		if vaulticSnapshotID.MatchString(summary.SnapshotID) {
@@ -302,9 +302,9 @@ func (c *vaulticCoordinator) buildRecord(job vaulticJob, report *vaulticBackupRe
 func (c *vaulticCoordinator) failureSummary(job vaulticJob, err error) string {
 	switch {
 	case errors.Is(err, repository.ErrNoKeyFound):
-		return "Mot de passe du dépôt incorrect ou clé introuvable."
+		return vaulticT("Mot de passe du dépôt incorrect ou clé introuvable.")
 	case errors.Is(err, context.DeadlineExceeded):
-		return "Délai dépassé."
+		return vaulticT("Délai dépassé.")
 	}
 	return vaulticSanitizeSummary(err.Error(), job.Redact)
 }
@@ -317,7 +317,7 @@ func (c *vaulticCoordinator) recordSkipped(job vaulticJob, reason string) vaulti
 		Status: vaulticStatusSkipped, Summary: reason,
 	}
 	if e := c.history.Append(record); e != nil {
-		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+		c.persistenceError(fmt.Errorf(vaulticT("historique non enregistré : %w"), e))
 	}
 	c.notifyRecord(record)
 	c.changed()
@@ -327,14 +327,14 @@ func (c *vaulticCoordinator) recordSkipped(job vaulticJob, reason string) vaulti
 func (c *vaulticCoordinator) notifyRecord(r vaulticRunRecord) {
 	switch r.Status {
 	case vaulticStatusSuccess:
-		c.notifier.Notify(vaulticNotifyCompleted, r.ID, "Sauvegarde terminée",
-			fmt.Sprintf("Profil « %s » : instantané %s enregistré.", r.Profile, r.SnapshotID))
+		c.notifier.Notify(vaulticNotifyCompleted, r.ID, vaulticT("Sauvegarde terminée"),
+			fmt.Sprintf(vaulticT("Profil « %s » : instantané %s enregistré."), r.Profile, r.SnapshotID))
 	case vaulticStatusFailure:
-		c.notifier.Notify(vaulticNotifyFailed, r.ID, "Sauvegarde en échec",
-			fmt.Sprintf("Profil « %s » : %s", r.Profile, r.Summary))
+		c.notifier.Notify(vaulticNotifyFailed, r.ID, vaulticT("Sauvegarde en échec"),
+			fmt.Sprintf(vaulticT("Profil « %s » : %s"), r.Profile, r.Summary))
 	case vaulticStatusSkipped:
-		c.notifier.Notify(vaulticNotifySkipped, r.ID, "Sauvegarde ignorée",
-			fmt.Sprintf("Profil « %s » : %s", r.Profile, r.Summary))
+		c.notifier.Notify(vaulticNotifySkipped, r.ID, vaulticT("Sauvegarde ignorée"),
+			fmt.Sprintf(vaulticT("Profil « %s » : %s"), r.Profile, r.Summary))
 	}
 }
 
@@ -401,7 +401,7 @@ func (c *vaulticCoordinator) warnIfStale(profile vaulticBackupProfile, now time.
 		return
 	}
 	c.notifier.Notify(vaulticNotifyOverdue, "stale|"+profile.Name+"|"+now.Format("2006-01-02"),
-		"Sauvegarde ancienne", vaulticStaleMessage(profile.Name, st))
+		vaulticT("Sauvegarde ancienne"), vaulticStaleMessage(profile.Name, st))
 }
 
 // tickProfile returns true when it started a run.
@@ -452,7 +452,7 @@ func (c *vaulticCoordinator) tickProfile(profile vaulticBackupProfile, now time.
 		}
 	}
 	if len(profile.Sources) == 0 {
-		finishSkipped("Aucune source n'est sélectionnée pour ce profil.")
+		finishSkipped(vaulticT("Aucune source n'est sélectionnée pour ce profil."))
 		return false
 	}
 	if job.Repository == "" || job.Repository != c.env.Repository() || !c.env.HasCredentials() {
@@ -461,15 +461,15 @@ func (c *vaulticCoordinator) tickProfile(profile vaulticBackupProfile, now time.
 		st.Overdue = true
 		c.mu.Unlock()
 		if first { // one entry and one notification per waiting period
-			reason := "Mot de passe du dépôt non disponible : la sauvegarde planifiée attend."
+			reason := vaulticT("Mot de passe du dépôt non disponible : la sauvegarde planifiée attend.")
 			if job.Repository == "" {
-				reason = "Aucun dépôt de destination : la sauvegarde planifiée attend."
+				reason = vaulticT("Aucun dépôt de destination : la sauvegarde planifiée attend.")
 			} else if job.Repository != c.env.Repository() {
-				reason = "Activez le dépôt prévu pour ce profil avant la sauvegarde planifiée."
+				reason = vaulticT("Activez le dépôt prévu pour ce profil avant la sauvegarde planifiée.")
 			}
 			rec := c.recordSkippedQuiet(job, reason)
-			c.notifier.Notify(vaulticNotifyOverdue, profile.Name+"|"+plan.Slot.UTC().Format(time.RFC3339), "Sauvegarde en retard",
-				fmt.Sprintf("Profil « %s » : %s", profile.Name, rec.Summary))
+			c.notifier.Notify(vaulticNotifyOverdue, profile.Name+"|"+plan.Slot.UTC().Format(time.RFC3339), vaulticT("Sauvegarde en retard"),
+				fmt.Sprintf(vaulticT("Profil « %s » : %s"), profile.Name, rec.Summary))
 		}
 		return false
 	}
@@ -493,7 +493,7 @@ func (c *vaulticCoordinator) tickProfile(profile vaulticBackupProfile, now time.
 		}
 		c.mu.Unlock()
 		if giveUp {
-			finishSkipped(fmt.Sprintf("Le moteur de sauvegarde est resté occupé (%d tentatives).", vaulticRetryMax))
+			finishSkipped(fmt.Sprintf(vaulticT("Le moteur de sauvegarde est resté occupé (%d tentatives)."), vaulticRetryMax))
 		}
 		return false
 	}
@@ -513,7 +513,7 @@ func (c *vaulticCoordinator) recordSkippedQuiet(job vaulticJob, reason string) v
 		Status: vaulticStatusSkipped, Summary: reason,
 	}
 	if e := c.history.Append(record); e != nil {
-		c.persistenceError(fmt.Errorf("historique non enregistré : %w", e))
+		c.persistenceError(fmt.Errorf(vaulticT("historique non enregistré : %w"), e))
 	}
 	c.changed()
 	return record

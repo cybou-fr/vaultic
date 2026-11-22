@@ -29,7 +29,7 @@ type vaulticSnapshotMetrics struct {
 func vaulticMeasureSnapshot(ctx context.Context, opts global.Options, id string) (vaulticSnapshotMetrics, error) {
 	var result vaulticSnapshotMetrics
 	if !vaulticSnapshotID.MatchString(id) {
-		return result, errors.New("Identifiant d'instantané invalide")
+		return result, errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	printer := ui.NewProgressPrinter(opts.JSON, opts.Verbosity, opts.Term)
 	ctx, repo, unlock, err := openWithReadLock(ctx, opts, opts.NoLock, printer)
@@ -43,7 +43,7 @@ func vaulticMeasureSnapshot(ctx context.Context, opts global.Options, id string)
 		return result, err
 	}
 	if snapshot.Tree == nil {
-		return result, errors.New("Cet instantané n'a pas d'arborescence")
+		return result, errors.New(vaulticT("Cet instantané n'a pas d'arborescence"))
 	}
 	if err := repo.LoadIndex(ctx, printer); err != nil {
 		return result, err
@@ -53,7 +53,7 @@ func vaulticMeasureSnapshot(ctx context.Context, opts global.Options, id string)
 		return result, err
 	}
 	if snapshot.Tree == nil {
-		return result, errors.New("Impossible de trouver l'arborescence de l'instantané")
+		return result, errors.New(vaulticT("Impossible de trouver l'arborescence de l'instantané"))
 	}
 	err = walker.Walk(ctx, repo, *snapshot.Tree, walker.WalkVisitor{
 		ProcessNode: func(_ restic.ID, _ string, node *data.Node, nodeErr error) error {
@@ -116,7 +116,7 @@ func (c *vaulticDiffCollector) collectLine(line []byte) {
 		MessageType string `json:"message_type"`
 	}
 	if err := json.Unmarshal(line, &head); err != nil {
-		c.decodeErr = fmt.Errorf("Résultat de comparaison illisible : %w", err)
+		c.decodeErr = fmt.Errorf(vaulticT("Résultat de comparaison illisible : %w"), err)
 		return
 	}
 	switch head.MessageType {
@@ -172,14 +172,14 @@ func (c *vaulticDiffCollector) Write(p []byte) (int, error) {
 		index := bytes.IndexByte(p, '\n')
 		if index < 0 {
 			if len(c.pending)+len(p) > vaulticDiffMaxLineBytes {
-				c.decodeErr = errors.New("Une entrée de comparaison dépasse la limite autorisée")
+				c.decodeErr = errors.New(vaulticT("Une entrée de comparaison dépasse la limite autorisée"))
 			} else {
 				c.pending = append(c.pending, p...)
 			}
 			break
 		}
 		if len(c.pending)+index > vaulticDiffMaxLineBytes {
-			c.decodeErr = errors.New("Une entrée de comparaison dépasse la limite autorisée")
+			c.decodeErr = errors.New(vaulticT("Une entrée de comparaison dépasse la limite autorisée"))
 			break
 		}
 		c.pending = append(c.pending, p[:index]...)
@@ -197,14 +197,14 @@ func (c *vaulticDiffCollector) Write(p []byte) (int, error) {
 func vaulticCompareSnapshots(ctx context.Context, opts global.Options, sourceID, targetID string) (vaulticSnapshotComparison, error) {
 	var zero vaulticSnapshotComparison
 	if !vaulticSnapshotID.MatchString(sourceID) || !vaulticSnapshotID.MatchString(targetID) {
-		return zero, errors.New("Identifiants d'instantané invalides")
+		return zero, errors.New(vaulticT("Identifiants d'instantané invalides"))
 	}
 	if sourceID == targetID {
-		return zero, errors.New("Choisissez deux instantanés différents")
+		return zero, errors.New(vaulticT("Choisissez deux instantanés différents"))
 	}
 	terminal, ok := opts.Term.(*vaulticTerminal)
 	if !ok {
-		return zero, errors.New("Terminal Vaultic requis")
+		return zero, errors.New(vaulticT("Terminal Vaultic requis"))
 	}
 	collector := &vaulticDiffCollector{}
 	original := terminal.output
@@ -224,7 +224,7 @@ func vaulticCompareSnapshots(ctx context.Context, opts global.Options, sourceID,
 		return zero, collector.decodeErr
 	}
 	if !collector.gotStats {
-		return zero, errors.New("Statistiques de comparaison manquantes")
+		return zero, errors.New(vaulticT("Statistiques de comparaison manquantes"))
 	}
 	collector.result.SourceID = sourceID
 	collector.result.TargetID = targetID
@@ -286,39 +286,39 @@ func vaulticSuggestedComparisonBase(snapshots []vaulticSnapshot, target vaulticS
 }
 
 func vaulticFormatSnapshotMetrics(item vaulticSnapshotMetrics) string {
-	return fmt.Sprintf("Fichiers : %d\nDossiers : %d\nAutres éléments : %d\nTaille logique des fichiers : %s", item.Files, item.Directories, item.OtherEntries, vaulticBytes(item.LogicalFileBytes))
+	return fmt.Sprintf(vaulticT("Fichiers : %d\nDossiers : %d\nAutres éléments : %d\nTaille logique des fichiers : %s"), item.Files, item.Directories, item.OtherEntries, vaulticBytes(item.LogicalFileBytes))
 }
 
 func vaulticFormatComparison(c vaulticSnapshotComparison) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Comparaison %s → %s\n\n", c.SourceID, c.TargetID)
-	fmt.Fprintf(&b, "Fichiers ajoutés : %d\nFichiers supprimés : %d\nFichiers modifiés : %d\n", c.Stats.Added.Files, c.Stats.Removed.Files, c.Stats.ChangedFiles)
-	fmt.Fprintf(&b, "Dossiers ajoutés : %d\nDossiers supprimés : %d\n", c.Stats.Added.Dirs, c.Stats.Removed.Dirs)
-	fmt.Fprintf(&b, "Autres éléments ajoutés : %d\nAutres éléments supprimés : %d\n", c.Stats.Added.Others, c.Stats.Removed.Others)
-	fmt.Fprintf(&b, "Blobs ajoutés : %s\nBlobs retirés : %s\n", vaulticBytes(c.Stats.Added.Bytes), vaulticBytes(c.Stats.Removed.Bytes))
-	fmt.Fprintf(&b, "\n%d modification(s) détectée(s).\n", c.TotalChanges)
+	fmt.Fprintf(&b, vaulticT("Comparaison %s → %s\n\n"), c.SourceID, c.TargetID)
+	fmt.Fprintf(&b, vaulticT("Fichiers ajoutés : %d\nFichiers supprimés : %d\nFichiers modifiés : %d\n"), c.Stats.Added.Files, c.Stats.Removed.Files, c.Stats.ChangedFiles)
+	fmt.Fprintf(&b, vaulticT("Dossiers ajoutés : %d\nDossiers supprimés : %d\n"), c.Stats.Added.Dirs, c.Stats.Removed.Dirs)
+	fmt.Fprintf(&b, vaulticT("Autres éléments ajoutés : %d\nAutres éléments supprimés : %d\n"), c.Stats.Added.Others, c.Stats.Removed.Others)
+	fmt.Fprintf(&b, vaulticT("Blobs ajoutés : %s\nBlobs retirés : %s\n"), vaulticBytes(c.Stats.Added.Bytes), vaulticBytes(c.Stats.Removed.Bytes))
+	fmt.Fprintf(&b, vaulticT("\n%d modification(s) détectée(s).\n"), c.TotalChanges)
 	if c.TotalChanges == 0 {
-		return b.String() + "Aucune différence de contenu détectée.\n"
+		return b.String() + vaulticT("Aucune différence de contenu détectée.\n")
 	}
-	b.WriteString("\nPremières modifications :\n")
+	b.WriteString(vaulticT("\nPremières modifications :\n"))
 	for _, entry := range c.Changes {
-		label := "Modifié"
+		label := vaulticT("Modifié")
 		switch {
 		case strings.Contains(entry.Modifier, "+"):
-			label = "Ajouté"
+			label = vaulticT("Ajouté")
 		case strings.Contains(entry.Modifier, "-"):
-			label = "Supprimé"
+			label = vaulticT("Supprimé")
 		case strings.Contains(entry.Modifier, "T"):
-			label = "Type modifié"
+			label = vaulticT("Type modifié")
 		case strings.Contains(entry.Modifier, "U"):
-			label = "Métadonnées"
+			label = vaulticT("Métadonnées")
 		}
 		// Escaping control characters avoids confusing multiline file names.
 		fmt.Fprintf(&b, "%s  %q\n", label, entry.Path)
 	}
 	if c.TotalChanges > len(c.Changes) {
-		fmt.Fprintf(&b, "… %d autres modifications non affichées.\n", c.TotalChanges-len(c.Changes))
+		fmt.Fprintf(&b, vaulticT("… %d autres modifications non affichées.\n"), c.TotalChanges-len(c.Changes))
 	}
-	b.WriteString("\nLes tailles ajoutées/retirées correspondent aux blocs restic, pas à l'espace disque total. Les changements de métadonnées seules ne sont pas inclus.")
+	b.WriteString(vaulticT("\nLes tailles ajoutées/retirées correspondent aux blocs restic, pas à l'espace disque total. Les changements de métadonnées seules ne sont pas inclus."))
 	return b.String()
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -60,18 +59,18 @@ var vaulticHTTPHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za
 func vaulticCheckHTTPHost(u *url.URL) error {
 	host := u.Hostname()
 	if host == "" || len(host) > 253 {
-		return errors.New("hôte manquant")
+		return errors.New(vaulticT("hôte manquant"))
 	}
 	if ip := net.ParseIP(host); ip == nil && !vaulticHTTPHostRe.MatchString(host) {
-		return errors.New("nom d'hôte invalide")
+		return errors.New(vaulticT("nom d'hôte invalide"))
 	}
 	if port := u.Port(); port != "" {
 		n, err := strconv.Atoi(port)
 		if err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
-			return errors.New("port invalide")
+			return errors.New(vaulticT("port invalide"))
 		}
 	} else if strings.HasSuffix(u.Host, ":") {
-		return errors.New("port vide")
+		return errors.New(vaulticT("port vide"))
 	}
 	return nil
 }
@@ -83,17 +82,17 @@ func vaulticCheckHTTPHost(u *url.URL) error {
 // characters, or a path that does not end in /v3.
 func vaulticSwiftAuthURL(raw string) (string, error) {
 	bad := func(reason string) (string, error) {
-		return "", errors.New("URL Keystone v3 invalide (" + reason + ") : utilisez par exemple https://auth.exemple.fr/v3")
+		return "", errors.New(vaulticT("URL Keystone v3 invalide (") + reason + ") : utilisez par exemple https://auth.exemple.fr/v3")
 	}
 	if raw != strings.TrimSpace(raw) || raw == "" {
-		return bad("espaces ou valeur vide")
+		return bad(vaulticT("espaces ou valeur vide"))
 	}
 	if len(raw) > 512 {
-		return bad("trop longue")
+		return bad(vaulticT("trop longue"))
 	}
 	for _, r := range raw {
 		if r <= ' ' || r == 0x7f || r == '\\' || r == '@' || r == '?' || r == '#' || r > 0x7e {
-			return bad("caractère non autorisé, identifiants, paramètres ou fragment")
+			return bad(vaulticT("caractère non autorisé, identifiants, paramètres ou fragment"))
 		}
 	}
 	u, err := url.Parse(raw)
@@ -107,23 +106,23 @@ func vaulticSwiftAuthURL(raw string) (string, error) {
 	case "https":
 	case "http":
 		if ip := net.ParseIP(u.Hostname()); u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return "", errors.New("HTTP n'est autorisé que vers localhost ; utilisez HTTPS pour Keystone.")
+			return "", errors.New(vaulticT("HTTP n'est autorisé que vers localhost ; utilisez HTTPS pour Keystone."))
 		}
 	default:
-		return bad("le schéma doit être https")
+		return bad(vaulticT("le schéma doit être https"))
 	}
 	if strings.Contains(u.Path, "%") || u.RawPath != "" {
-		return bad("séquences d'échappement dans le chemin")
+		return bad(vaulticT("séquences d'échappement dans le chemin"))
 	}
 	trimmed := strings.TrimSuffix(u.Path, "/")
 	segments := strings.Split(strings.TrimPrefix(trimmed, "/"), "/")
 	for _, segment := range segments {
 		if segment == "" || segment == "." || segment == ".." {
-			return bad("segments de chemin vides ou relatifs")
+			return bad(vaulticT("segments de chemin vides ou relatifs"))
 		}
 	}
 	if len(segments) == 0 || segments[len(segments)-1] != "v3" {
-		return "", errors.New("Seul Keystone v3 est pris en charge : le chemin de l'URL doit se terminer par /v3.")
+		return "", errors.New(vaulticT("Seul Keystone v3 est pris en charge : le chemin de l'URL doit se terminer par /v3."))
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
 	u.Path = trimmed
@@ -134,15 +133,15 @@ func (a vaulticCloudAuth) validate() error {
 	switch a.Scheme {
 	case "s3", "b2":
 		if (a.AccessID == "") != (a.Secret == "") {
-			return errors.New("Renseignez à la fois l'identifiant et la clé secrète, ou laissez les deux champs vides pour utiliser l'authentification déjà configurée.")
+			return errors.New(vaulticT("Renseignez à la fois l'identifiant et la clé secrète, ou laissez les deux champs vides pour utiliser l'authentification déjà configurée."))
 		}
 	case "azure":
 		if a.Secret != "" && a.AccountName == "" {
-			return errors.New("Le nom du compte Azure est nécessaire avec une clé ou un SAS.")
+			return errors.New(vaulticT("Le nom du compte Azure est nécessaire avec une clé ou un SAS."))
 		}
 	case "rest":
 		if (a.AccessID == "") != (a.Secret == "") {
-			return errors.New("Renseignez l'utilisateur et le mot de passe du serveur REST, ou laissez les deux champs vides.")
+			return errors.New(vaulticT("Renseignez l'utilisateur et le mot de passe du serveur REST, ou laissez les deux champs vides."))
 		}
 	case "swift":
 		if !a.hasValues() {
@@ -153,19 +152,19 @@ func (a vaulticCloudAuth) validate() error {
 		}
 		if a.AccessID == "" || a.Secret == "" {
 			if a.AppCredential {
-				return errors.New("Renseignez l'ID et le secret de l'Application Credential.")
+				return errors.New(vaulticT("Renseignez l'ID et le secret de l'Application Credential."))
 			}
-			return errors.New("Renseignez l'utilisateur et le mot de passe OpenStack.")
+			return errors.New(vaulticT("Renseignez l'utilisateur et le mot de passe OpenStack."))
 		}
 		if !a.AppCredential && (a.UserDomain == "" || a.Project == "" || a.ProjectDomain == "") {
-			return errors.New("Keystone v3 : domaine de l'utilisateur, projet et domaine du projet sont obligatoires.")
+			return errors.New(vaulticT("Keystone v3 : domaine de l'utilisateur, projet et domaine du projet sont obligatoires."))
 		}
 	case "gs":
 		if a.Secret != "" || a.AccessID != "" {
-			return errors.New("Google Cloud utilise les Application Default Credentials ; aucune clé n'est saisie ici.")
+			return errors.New(vaulticT("Google Cloud utilise les Application Default Credentials ; aucune clé n'est saisie ici."))
 		}
 	default:
-		return errors.New("Ce type de stockage n'utilise pas le formulaire cloud.")
+		return errors.New(vaulticT("Ce type de stockage n'utilise pas le formulaire cloud."))
 	}
 	return nil
 }
@@ -200,7 +199,7 @@ func (s *vaulticCloudSessions) set(repo string, auth vaulticCloudAuth) error {
 		return err
 	}
 	if scheme != auth.Scheme {
-		return errors.New("Type de dépôt incompatible avec les identifiants cloud.")
+		return errors.New(vaulticT("Type de dépôt incompatible avec les identifiants cloud."))
 	}
 	if auth.Scheme == "swift" && auth.AuthURL != "" {
 		clean, err := vaulticSwiftAuthURL(auth.AuthURL)
@@ -250,7 +249,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "s3":
 		p, ok := cfg.(*s3.Config)
 		if !ok {
-			return nil, errors.New("Configuration S3 invalide")
+			return nil, errors.New(vaulticT("Configuration S3 invalide"))
 		}
 		copy := *p
 		if f.auth.AccessID != "" {
@@ -264,7 +263,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "b2":
 		p, ok := cfg.(*b2.Config)
 		if !ok {
-			return nil, errors.New("Configuration B2 invalide")
+			return nil, errors.New(vaulticT("Configuration B2 invalide"))
 		}
 		copy := *p
 		if f.auth.AccessID != "" {
@@ -275,7 +274,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "rest":
 		p, ok := cfg.(*rest.Config)
 		if !ok || p.URL == nil {
-			return nil, errors.New("Configuration REST invalide")
+			return nil, errors.New(vaulticT("Configuration REST invalide"))
 		}
 		copy := *p
 		if f.auth.AccessID != "" {
@@ -287,7 +286,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "swift":
 		p, ok := cfg.(*swift.Config)
 		if !ok {
-			return nil, errors.New("Configuration Swift invalide")
+			return nil, errors.New(vaulticT("Configuration Swift invalide"))
 		}
 		copy := *p
 		if f.auth.AuthURL == "" {
@@ -312,7 +311,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "gs":
 		p, ok := cfg.(*gs.Config)
 		if !ok {
-			return nil, errors.New("Configuration Google Cloud invalide")
+			return nil, errors.New(vaulticT("Configuration Google Cloud invalide"))
 		}
 		copy := *p
 		if f.auth.ProjectID != "" {
@@ -322,7 +321,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 	case "azure":
 		p, ok := cfg.(*azure.Config)
 		if !ok {
-			return nil, errors.New("Configuration Azure invalide")
+			return nil, errors.New(vaulticT("Configuration Azure invalide"))
 		}
 		copy := *p
 		if f.auth.AccountName != "" {
@@ -339,7 +338,7 @@ func (f vaulticPrivateFactory) apply(cfg interface{}) (interface{}, error) {
 		}
 		return &copy, nil
 	}
-	return nil, fmt.Errorf("Type cloud non pris en charge")
+	return nil, errors.New(vaulticT("Type cloud non pris en charge"))
 }
 func (f vaulticPrivateFactory) Create(ctx context.Context, cfg interface{}, rt http.RoundTripper, lim limiter.Limiter, onError func(string, ...interface{})) (backend.Backend, error) {
 	secure, err := f.apply(cfg)
@@ -379,9 +378,9 @@ func vaulticBackendsForSession(auth vaulticCloudAuth) *location.Registry {
 
 func vaulticCloudSessionDescription(auth vaulticCloudAuth) string {
 	if auth.hasSecret() {
-		return "Identifiants cloud gardés uniquement en mémoire jusqu'à la fermeture de Vaultic."
+		return vaulticT("Identifiants cloud gardés uniquement en mémoire jusqu'à la fermeture de Vaultic.")
 	}
-	return "Authentification provenant de la configuration système ou de l'environnement."
+	return vaulticT("Authentification provenant de la configuration système ou de l'environnement.")
 }
 
 func vaulticRedactCloudSecrets(redact func(string) string, auth vaulticCloudAuth) func(string) string {
@@ -389,7 +388,7 @@ func vaulticRedactCloudSecrets(redact func(string) string, auth vaulticCloudAuth
 		message = redact(message)
 		for _, secret := range auth.secretValues() {
 			if len(strings.TrimSpace(secret)) > 0 {
-				message = strings.ReplaceAll(message, secret, "[SECRET MASQUÉ]")
+				message = strings.ReplaceAll(message, secret, vaulticT("[SECRET MASQUÉ]"))
 			}
 		}
 		return message

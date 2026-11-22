@@ -39,22 +39,22 @@ type vaulticOverviewParts struct {
 
 func vaulticOverviewPage(p vaulticOverviewParts) *container.Scroll {
 	snapshotOverview := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dernière activité", 19),
+		vaulticHeading(vaulticT("Dernière activité"), 19),
 		p.RecentSnapshot,
 		p.ViewSnapshots,
 	))
 	statGrid := container.NewVBox(
 		container.NewGridWithColumns(2,
-			vaulticStatCard("SOURCES CONFIGURÉES", p.SourceCount),
-			vaulticStatCard("INSTANTANÉS CONSULTÉS", p.SnapshotCount),
+			vaulticStatCard(vaulticT("SOURCES CONFIGURÉES"), p.SourceCount),
+			vaulticStatCard(vaulticT("INSTANTANÉS CONSULTÉS"), p.SnapshotCount),
 		),
 		container.NewGridWithColumns(2,
-			vaulticStatCard("DÉPÔT ACTIF", p.Repository),
-			vaulticStatCard("DERNIÈRE OPÉRATION RÉUSSIE", p.RecentRun),
+			vaulticStatCard(vaulticT("DÉPÔT ACTIF"), p.Repository),
+			vaulticStatCard(vaulticT("DERNIÈRE OPÉRATION RÉUSSIE"), p.RecentRun),
 		),
 	)
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Vue d’ensemble", 26),
+		vaulticHeading(vaulticT("Vue d’ensemble"), 26),
 		container.NewHBox(p.StartBackup, p.Setup, p.ViewStorage), statGrid, snapshotOverview,
 	)))
 }
@@ -70,14 +70,14 @@ type vaulticRepositoriesParts struct {
 
 func vaulticRepositoriesPage(p vaulticRepositoriesParts) *container.Scroll {
 	savedRepositories := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dépôts enregistrés", 20),
+		vaulticHeading(vaulticT("Dépôts enregistrés"), 20),
 		p.SavedList,
-		vaulticWrappedLabel("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance."),
+		vaulticWrappedLabel(vaulticT("« Oublier » retire seulement le dépôt de Vaultic : aucune sauvegarde n'est supprimée, localement ou à distance.")),
 	))
 	activeConfiguration := vaulticSurface(container.NewVBox(
-		vaulticHeading("Dépôt actif", 20),
+		vaulticHeading(vaulticT("Dépôt actif"), 20),
 		p.ActiveRepository,
-		vaulticWrappedLabel("Saisissez le mot de passe restic du dépôt sélectionné, puis vérifiez la connexion. Sans mot de passe, seul l'accès au dépôt est testé."),
+		vaulticWrappedLabel(vaulticT("Saisissez le mot de passe restic du dépôt sélectionné, puis vérifiez la connexion. Sans mot de passe, seul l'accès au dépôt est testé.")),
 		p.Password,
 		p.Remember,
 		p.Verify,
@@ -85,7 +85,7 @@ func vaulticRepositoriesPage(p vaulticRepositoriesParts) *container.Scroll {
 		p.ClearAuth,
 	))
 	return container.NewScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Dépôts", 26),
+		vaulticHeading(vaulticT("Dépôts"), 26),
 		savedRepositories,
 		activeConfiguration,
 		p.Setup,
@@ -109,26 +109,26 @@ func vaulticBackupPage(p vaulticBackupParts, automationContent fyne.CanvasObject
 	automationScroll := container.NewScroll(container.NewPadded(automationContent))
 	retentionScroll := container.NewScroll(container.NewPadded(p.Retention))
 	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Lancement", theme.MediaPlayIcon(), container.NewVScroll(container.NewBorder(
+		container.NewTabItemWithIcon(vaulticT("Lancement"), theme.MediaPlayIcon(), container.NewVScroll(container.NewBorder(
 			container.NewPadded(container.NewVBox(
 				container.NewHBox(p.DuplicateProfile, p.DeleteProfile),
 				container.NewHBox(p.Exclusions, p.PreviewExclusions),
 				p.ExclusionSummary,
 			)),
 			container.NewPadded(vaulticSurface(container.NewVBox(
-				vaulticWrappedLabel("Le dépôt doit se trouver en dehors des dossiers sauvegardés."),
+				vaulticWrappedLabel(vaulticT("Le dépôt doit se trouver en dehors des dossiers sauvegardés.")),
 				container.NewGridWithColumns(2, p.BackupNow, p.LastReport),
 			))),
 			nil, nil,
 			container.NewPadded(vaulticSurface(p.Sources)),
 		))),
-		container.NewTabItemWithIcon("Automatisation", theme.HistoryIcon(), automationScroll),
-		container.NewTabItemWithIcon("Conservation", theme.DeleteIcon(), retentionScroll),
+		container.NewTabItemWithIcon(vaulticT("Automatisation"), theme.HistoryIcon(), automationScroll),
+		container.NewTabItemWithIcon(vaulticT("Conservation"), theme.DeleteIcon(), retentionScroll),
 	)
 	page = container.NewBorder(
 		container.NewPadded(container.NewVBox(
-			vaulticHeading("Sauvegarde", 26),
-			widget.NewForm(widget.NewFormItem("Profil", container.NewBorder(nil, nil, nil,
+			vaulticHeading(vaulticT("Sauvegarde"), 26),
+			widget.NewForm(widget.NewFormItem(vaulticT("Profil"), container.NewBorder(nil, nil, nil,
 				container.NewHBox(p.NewProfile, p.RenameProfile), p.Profile))),
 		)),
 		nil, nil, nil,
@@ -148,7 +148,7 @@ type vaulticSnapshotParts struct {
 func vaulticSnapshotPage(p vaulticSnapshotParts) fyne.CanvasObject {
 	return container.NewBorder(
 		container.NewPadded(container.NewVBox(
-			vaulticPageHeading("Chronologie des instantanés", "Parcourez les versions par date, comparez les changements et restaurez vos fichiers."),
+			vaulticPageHeading(vaulticT("Chronologie des instantanés"), vaulticT("Parcourez les versions par date, comparez les changements et restaurez vos fichiers.")),
 			p.Refresh,
 		)),
 		container.NewPadded(vaulticSurface(container.NewVBox(
@@ -169,28 +169,28 @@ type vaulticStorageParts struct {
 
 func vaulticStoragePage(p vaulticStorageParts) *container.Scroll {
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticPageHeading("Stockage", "Mesurez les données réellement référencées par les instantanés."),
+		vaulticPageHeading(vaulticT("Stockage"), vaulticT("Mesurez les données réellement référencées par les instantanés.")),
 		vaulticSurface(container.NewVBox(
-			vaulticWrappedLabel("Cette analyse lit les métadonnées du dépôt. Elle peut prendre du temps sur les dépôts volumineux et peut être annulée."),
+			vaulticWrappedLabel(vaulticT("Cette analyse lit les métadonnées du dépôt. Elle peut prendre du temps sur les dépôts volumineux et peut être annulée.")),
 			p.Analyze,
 			p.Updated,
 		)),
 		container.NewGridWithColumns(2,
-			vaulticStatCard("VOLUME DES BLOBS", p.Volume),
-			vaulticStatCard("BLOBS RÉFÉRENCÉS", p.Blobs),
+			vaulticStatCard(vaulticT("VOLUME DES BLOBS"), p.Volume),
+			vaulticStatCard(vaulticT("BLOBS RÉFÉRENCÉS"), p.Blobs),
 		),
-		vaulticStatCard("INSTANTANÉS ANALYSÉS", p.Snapshots),
-		vaulticSurface(vaulticWrappedLabel("Mesure restic raw-data : taille des blocs référencés, hors métadonnées du dépôt, fichiers non référencés et espace disque libre. Ce n'est pas la taille physique complète du dépôt.")),
+		vaulticStatCard(vaulticT("INSTANTANÉS ANALYSÉS"), p.Snapshots),
+		vaulticSurface(vaulticWrappedLabel(vaulticT("Mesure restic raw-data : taille des blocs référencés, hors métadonnées du dépôt, fichiers non référencés et espace disque libre. Ce n'est pas la taille physique complète du dépôt."))),
 	)))
 }
 
 func vaulticIntegrityPage(check fyne.CanvasObject) *container.Scroll {
-	description := widget.NewLabel("La vérification contrôle la structure du dépôt. Elle ne supprime pas vos sauvegardes.")
+	description := widget.NewLabel(vaulticT("La vérification contrôle la structure du dépôt. Elle ne supprime pas vos sauvegardes."))
 	description.Wrapping = fyne.TextWrapWord
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Intégrité", 26),
+		vaulticHeading(vaulticT("Intégrité"), 26),
 		vaulticSurface(container.NewVBox(
-			vaulticHeading("Contrôle du dépôt", 20),
+			vaulticHeading(vaulticT("Contrôle du dépôt"), 20),
 			description,
 			check,
 		)),
@@ -199,26 +199,30 @@ func vaulticIntegrityPage(check fyne.CanvasObject) *container.Scroll {
 
 func vaulticActivityPage(logs fyne.CanvasObject, clear func()) fyne.CanvasObject {
 	return container.NewBorder(
-		container.NewPadded(vaulticHeading("Activité", 26)),
+		container.NewPadded(vaulticHeading(vaulticT("Activité"), 26)),
 		nil, nil, nil, container.NewPadded(vaulticSurface(container.NewBorder(
-			container.NewHBox(widget.NewLabel("Événements de cette session"), layout.NewSpacer(), widget.NewButtonWithIcon("Effacer", theme.ContentClearIcon(), clear)),
+			container.NewHBox(widget.NewLabel(vaulticT("Événements de cette session")), layout.NewSpacer(), widget.NewButtonWithIcon(vaulticT("Effacer"), theme.ContentClearIcon(), clear)),
 			nil, nil, nil, container.NewVScroll(logs),
 		))),
 	)
 }
 
-func vaulticSettingsPage(background fyne.CanvasObject) *container.Scroll {
+func vaulticSettingsPage(background, language fyne.CanvasObject) *container.Scroll {
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
-		vaulticHeading("Paramètres", 26),
+		vaulticHeading(vaulticT("Paramètres"), 26),
 		vaulticSurface(container.NewVBox(
-			vaulticHeading("Arrière-plan", 19),
+			vaulticHeading(vaulticT("Langue")+" / Language", 19),
+			language,
+		)),
+		vaulticSurface(container.NewVBox(
+			vaulticHeading(vaulticT("Arrière-plan"), 19),
 			background,
 		)),
 		vaulticSurface(container.NewVBox(
-			vaulticHeading("À propos de Vaultic", 19),
-			vaulticWrappedLabel("Les dépôts Vaultic utilisent le format restic."),
-			vaulticWrappedLabel("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic)."),
-			widget.NewLabel("Moteur intégré — "+global.Version),
+			vaulticHeading(vaulticT("À propos de Vaultic"), 19),
+			vaulticWrappedLabel(vaulticT("Les dépôts Vaultic utilisent le format restic.")),
+			vaulticWrappedLabel(vaulticT("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic).")),
+			widget.NewLabel(vaulticT("Moteur intégré — ")+global.Version),
 		)),
 	)))
 }
@@ -231,7 +235,8 @@ type vaulticNavigation struct {
 	buttons []*widget.Button
 }
 
-var vaulticNavLabels = []string{"Vue d'ensemble", "Sauvegarde", "Instantanés", "Stockage", "Intégrité", "Activité", "Dépôts", "Paramètres"}
+// Rebuilt by vaulticLocalizeTables.
+var vaulticNavLabels = []string{vaulticL("Vue d'ensemble"), vaulticL("Sauvegarde"), vaulticL("Instantanés"), vaulticL("Stockage"), vaulticL("Intégrité"), vaulticL("Activité"), vaulticL("Dépôts"), vaulticL("Paramètres")}
 
 func vaulticNewNavigation(pages []fyne.CanvasObject) *vaulticNavigation {
 	n := &vaulticNavigation{pages: pages, Pages: container.NewStack(pages[0])}
@@ -245,7 +250,7 @@ func vaulticNewNavigation(pages []fyne.CanvasObject) *vaulticNavigation {
 		n.buttons = append(n.buttons, button)
 		items = append(items, button)
 	}
-	brand := container.NewHBox(container.NewGridWrap(fyne.NewSize(40, 40), widget.NewIcon(vaulticAppIcon())), container.NewCenter(vaulticHeading("Vaultic", 24)))
+	brand := container.NewHBox(container.NewGridWrap(fyne.NewSize(40, 40), widget.NewIcon(vaulticAppIcon())), container.NewCenter(vaulticHeading(vaulticT("Vaultic"), 24)))
 	n.Sidebar = container.NewStack(canvas.NewRectangle(vaulticSidebar), container.NewPadded(container.NewBorder(
 		container.NewVBox(brand, widget.NewSeparator()), nil,
 		nil, nil,
@@ -273,7 +278,7 @@ func (n *vaulticNavigation) Navigate(index int) {
 
 // vaulticStatusBar is the strip under every page: progress and status text.
 func vaulticStatusBar(progress, status, cancel fyne.CanvasObject) fyne.CanvasObject {
-	title := widget.NewLabelWithStyle("ÉTAT", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle(vaulticT("ÉTAT"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	return container.NewVBox(
 		widget.NewSeparator(),
 		progress,

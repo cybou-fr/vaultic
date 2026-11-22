@@ -54,7 +54,7 @@ type vaulticProfilesController struct {
 func newVaulticProfilesController(settings *vaulticSettings, index int, hooks vaulticProfilesHooks) *vaulticProfilesController {
 	c := &vaulticProfilesController{hooks: hooks, settings: settings, index: index, selected: -1}
 	c.CountValue = vaulticHeading(fmt.Sprintf("%d", len(c.Sources())), 24)
-	c.Empty = vaulticEmptyState(vaulticWrappedLabel("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde."))
+	c.Empty = vaulticEmptyState(vaulticWrappedLabel(vaulticT("Ajoutez un fichier ou un dossier pour préparer votre sauvegarde.")))
 	c.list = widget.NewList(
 		func() int { return len(c.Sources()) },
 		vaulticListLabel,
@@ -81,7 +81,7 @@ func newVaulticProfilesController(settings *vaulticSettings, index int, hooks va
 			hooks.UpdateActions()
 		}
 	}
-	c.AddFolder = widget.NewButton("+ Dossier", func() {
+	c.AddFolder = widget.NewButton(vaulticT("+ Dossier"), func() {
 		dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
 			if err != nil {
 				dialog.ShowError(err, hooks.Window)
@@ -92,7 +92,7 @@ func newVaulticProfilesController(settings *vaulticSettings, index int, hooks va
 			}
 		}, hooks.Window).Show()
 	})
-	c.AddFile = widget.NewButton("+ Fichier", func() {
+	c.AddFile = widget.NewButton(vaulticT("+ Fichier"), func() {
 		dialog.NewFileOpen(func(f fyne.URIReadCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, hooks.Window)
@@ -105,7 +105,7 @@ func newVaulticProfilesController(settings *vaulticSettings, index int, hooks va
 			}
 		}, hooks.Window).Show()
 	})
-	c.RemoveSource = widget.NewButton("Retirer", func() {
+	c.RemoveSource = widget.NewButton(vaulticT("Retirer"), func() {
 		sources := c.Sources()
 		if c.selected < 0 || c.selected >= len(sources) {
 			return
@@ -115,12 +115,12 @@ func newVaulticProfilesController(settings *vaulticSettings, index int, hooks va
 		c.updateSources(next)
 	})
 	c.Section = container.NewBorder(
-		container.NewVBox(widget.NewLabelWithStyle("Sources", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), container.NewHBox(c.AddFolder, c.AddFile, c.RemoveSource)),
+		container.NewVBox(widget.NewLabelWithStyle(vaulticT("Sources"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), container.NewHBox(c.AddFolder, c.AddFile, c.RemoveSource)),
 		container.NewHScroll(c.path), nil, nil, container.NewStack(c.list, c.Empty),
 	)
 
 	c.Select = widget.NewSelect(nil, nil)
-	c.ExclusionSummary = widget.NewLabel("Aucune exclusion")
+	c.ExclusionSummary = widget.NewLabel(vaulticT("Aucune exclusion"))
 	c.Select.OnChanged = func(name string) {
 		for index, profile := range c.settings.Profiles {
 			if profile.Name == name && index != c.index {
@@ -129,12 +129,12 @@ func newVaulticProfilesController(settings *vaulticSettings, index int, hooks va
 			}
 		}
 	}
-	c.New = widget.NewButton("Nouveau…", func() { c.editName(true) })
-	c.Rename = widget.NewButton("Renommer…", func() { c.editName(false) })
-	c.Duplicate = widget.NewButtonWithIcon("Dupliquer…", theme.ContentCopyIcon(), c.duplicate)
-	c.Delete = widget.NewButtonWithIcon("Supprimer le profil…", theme.DeleteIcon(), c.delete)
-	c.Exclusions = widget.NewButtonWithIcon("Exclusions…", theme.ContentRemoveIcon(), c.editExclusions)
-	c.Preview = widget.NewButtonWithIcon("Aperçu des exclusions…", theme.SearchIcon(), c.previewExclusions)
+	c.New = widget.NewButton(vaulticT("Nouveau…"), func() { c.editName(true) })
+	c.Rename = widget.NewButton(vaulticT("Renommer…"), func() { c.editName(false) })
+	c.Duplicate = widget.NewButtonWithIcon(vaulticT("Dupliquer…"), theme.ContentCopyIcon(), c.duplicate)
+	c.Delete = widget.NewButtonWithIcon(vaulticT("Supprimer le profil…"), theme.DeleteIcon(), c.delete)
+	c.Exclusions = widget.NewButtonWithIcon(vaulticT("Exclusions…"), theme.ContentRemoveIcon(), c.editExclusions)
+	c.Preview = widget.NewButtonWithIcon(vaulticT("Aperçu des exclusions…"), theme.SearchIcon(), c.previewExclusions)
 	return c
 }
 
@@ -180,9 +180,9 @@ func (c *vaulticProfilesController) Refresh() {
 		c.Select.SetSelected(names[c.index])
 	}
 	if count := len(c.settings.Profiles[c.index].Excludes); count > 0 {
-		c.ExclusionSummary.SetText(fmt.Sprintf("%d exclusion(s)", count))
+		c.ExclusionSummary.SetText(fmt.Sprintf(vaulticT("%d exclusion(s)"), count))
 	} else {
-		c.ExclusionSummary.SetText("Aucune exclusion")
+		c.ExclusionSummary.SetText(vaulticT("Aucune exclusion"))
 	}
 }
 
@@ -217,27 +217,27 @@ func (c *vaulticProfilesController) Apply(next []vaulticBackupProfile, index int
 
 func (c *vaulticProfilesController) editName(create bool) {
 	w := c.hooks.Window
-	title := "Renommer le profil"
+	title := vaulticT("Renommer le profil")
 	name := widget.NewEntry()
 	if create {
-		title = "Nouveau profil"
+		title = vaulticT("Nouveau profil")
 	} else {
 		name.SetText(c.Current().Name)
 	}
-	form := dialog.NewForm(title, "Enregistrer", "Annuler", []*widget.FormItem{
-		widget.NewFormItem("Nom", name),
+	form := dialog.NewForm(title, vaulticT("Enregistrer"), vaulticT("Annuler"), []*widget.FormItem{
+		widget.NewFormItem(vaulticT("Nom"), name),
 	}, func(ok bool) {
 		if !ok {
 			return
 		}
 		label := strings.TrimSpace(name.Text)
 		if label == "" || len([]rune(label)) > 40 {
-			dialog.ShowInformation("Nom du profil", "Saisissez un nom de 1 à 40 caractères.", w)
+			dialog.ShowInformation(vaulticT("Nom du profil"), vaulticT("Saisissez un nom de 1 à 40 caractères."), w)
 			return
 		}
 		for i, profile := range c.settings.Profiles {
 			if strings.EqualFold(profile.Name, label) && (create || i != c.index) {
-				dialog.ShowInformation("Nom déjà utilisé", "Choisissez un autre nom pour ce profil.", w)
+				dialog.ShowInformation(vaulticT("Nom déjà utilisé"), vaulticT("Choisissez un autre nom pour ce profil."), w)
 				return
 			}
 		}
@@ -264,8 +264,8 @@ func (c *vaulticProfilesController) duplicate() {
 	from := c.index
 	field := widget.NewEntry()
 	field.SetText(vaulticSuggestedCopyName(c.settings.Profiles, from))
-	dialog.NewForm("Dupliquer le profil", "Dupliquer", "Annuler", []*widget.FormItem{
-		widget.NewFormItem("Nom de la copie", field),
+	dialog.NewForm(vaulticT("Dupliquer le profil"), vaulticT("Dupliquer"), vaulticT("Annuler"), []*widget.FormItem{
+		widget.NewFormItem(vaulticT("Nom de la copie"), field),
 	}, func(ok bool) {
 		if !ok || c.hooks.Busy() || from != c.index {
 			return
@@ -276,7 +276,7 @@ func (c *vaulticProfilesController) duplicate() {
 			return
 		}
 		if c.Apply(updated, index) {
-			c.hooks.Log("Profil dupliqué (sources et exclusions copiées).")
+			c.hooks.Log(vaulticT("Profil dupliqué (sources et exclusions copiées)."))
 		}
 	}, w).Show()
 	w.Canvas().Focus(field)
@@ -289,8 +289,8 @@ func (c *vaulticProfilesController) delete() {
 	w := c.hooks.Window
 	target := c.index
 	name := c.settings.Profiles[target].Name
-	dialog.ShowConfirm("Supprimer le profil",
-		"Supprimer uniquement le profil « "+name+" » de Vaultic ?\n\nLes dépôts restic et les sauvegardes existantes ne seront pas modifiés.",
+	dialog.ShowConfirm(vaulticT("Supprimer le profil"),
+		vaulticT("Supprimer uniquement le profil « ")+name+vaulticT(" » de Vaultic ?\n\nLes dépôts restic et les sauvegardes existantes ne seront pas modifiés."),
 		func(ok bool) {
 			if !ok || c.hooks.Busy() || target != c.index {
 				return
@@ -301,7 +301,7 @@ func (c *vaulticProfilesController) delete() {
 				return
 			}
 			if c.Apply(updated, index) {
-				c.hooks.Log("Profil supprimé de la configuration : " + name + " (snapshots inchangés).")
+				c.hooks.Log(vaulticT("Profil supprimé de la configuration : ") + name + vaulticT(" (snapshots inchangés)."))
 			}
 		}, w)
 }
@@ -312,18 +312,18 @@ func (c *vaulticProfilesController) editExclusions() {
 	editor := widget.NewMultiLineEntry()
 	editor.SetMinRowsVisible(10)
 	editor.Wrapping = fyne.TextWrapWord
-	editor.SetPlaceHolder("**/node_modules\n**/.cache\n*.tmp")
+	editor.SetPlaceHolder(vaulticT("**/node_modules\n**/.cache\n*.tmp"))
 	editor.SetText(strings.Join(c.settings.Profiles[targetProfile].Excludes, "\n"))
-	explanation := vaulticWrappedLabel("Une règle restic par ligne. Les lignes vides ou commençant par # sont ignorées. Des exceptions peuvent commencer par !. Les exclusions ne concernent que ce profil.")
+	explanation := vaulticWrappedLabel(vaulticT("Une règle restic par ligne. Les lignes vides ou commençant par # sont ignorées. Des exceptions peuvent commencer par !. Les exclusions ne concernent que ce profil."))
 	scroll := container.NewVScroll(editor)
 	scroll.SetMinSize(fyne.NewSize(500, 290))
 	content := container.NewBorder(explanation, nil, nil, nil, scroll)
-	dialog.NewCustomConfirm("Exclusions du profil", "Enregistrer", "Annuler", content, func(ok bool) {
+	dialog.NewCustomConfirm(vaulticT("Exclusions du profil"), vaulticT("Enregistrer"), vaulticT("Annuler"), content, func(ok bool) {
 		if !ok {
 			return
 		}
 		if targetProfile != c.index {
-			dialog.ShowInformation("Profil modifié", "Sélectionnez à nouveau le profil avant de modifier ses exclusions.", w)
+			dialog.ShowInformation(vaulticT("Profil modifié"), vaulticT("Sélectionnez à nouveau le profil avant de modifier ses exclusions."), w)
 			return
 		}
 		rules, err := vaulticParseExclusions(editor.Text)
@@ -341,17 +341,17 @@ func (c *vaulticProfilesController) previewExclusions() {
 	w := c.hooks.Window
 	sources := c.Sources()
 	if len(sources) == 0 {
-		dialog.ShowInformation("Sources manquantes", "Ajoutez d'abord un dossier ou un fichier au profil.", w)
+		dialog.ShowInformation(vaulticT("Sources manquantes"), vaulticT("Ajoutez d'abord un dossier ou un fichier au profil."), w)
 		return
 	}
 	rules := append([]string(nil), c.Current().Excludes...)
 	if len(rules) == 0 {
-		dialog.ShowInformation("Aucune exclusion", "Ajoutez des règles d'exclusion pour ce profil avant de lancer un aperçu.", w)
+		dialog.ShowInformation(vaulticT("Aucune exclusion"), vaulticT("Ajoutez des règles d'exclusion pour ce profil avant de lancer un aperçu."), w)
 		return
 	}
 	selected := append([]string(nil), sources...)
 	var result vaulticExclusionPreview
-	c.hooks.RunWithDepot("Aperçu des exclusions",
+	c.hooks.RunWithDepot(vaulticT("Aperçu des exclusions"),
 		func(ctx context.Context, g global.Options) error {
 			cleaned, err := vaulticSourcesForBackup(g.Repo, selected)
 			if err != nil {
@@ -364,7 +364,7 @@ func (c *vaulticProfilesController) previewExclusions() {
 			details := vaulticWrappedLabel(vaulticFormatExclusionPreview(result))
 			content := container.NewVScroll(details)
 			content.SetMinSize(fyne.NewSize(560, 340))
-			dlg := dialog.NewCustom("Aperçu indicatif des exclusions", "Fermer", content, w)
+			dlg := dialog.NewCustom(vaulticT("Aperçu indicatif des exclusions"), vaulticT("Fermer"), content, w)
 			dlg.Resize(fyne.NewSize(640, 440))
 			dlg.Show()
 			return nil

@@ -34,17 +34,17 @@ const (
 func (s vaulticConnState) Label() string {
 	switch s {
 	case vaulticConnTesting:
-		return "Test en cours…"
+		return vaulticT("Test en cours…")
 	case vaulticConnReachable:
-		return "Joignable"
+		return vaulticT("Joignable")
 	case vaulticConnAuthFailed:
-		return "Authentification refusée"
+		return vaulticT("Authentification refusée")
 	case vaulticConnUnavailable:
-		return "Dépôt indisponible"
+		return vaulticT("Dépôt indisponible")
 	case vaulticConnConnected:
-		return "Connecté"
+		return vaulticT("Connecté")
 	}
-	return "Non testé"
+	return vaulticT("Non testé")
 }
 
 func (s vaulticConnState) Key() string {
@@ -88,43 +88,43 @@ var (
 func vaulticClassifyProbe(err error, passwordGiven bool) vaulticProbeResult {
 	switch {
 	case err == nil && passwordGiven:
-		return vaulticProbeResult{vaulticConnConnected, "Dépôt ouvert et mot de passe accepté."}
+		return vaulticProbeResult{vaulticConnConnected, vaulticT("Dépôt ouvert et mot de passe accepté.")}
 	case err == nil:
-		return vaulticProbeResult{vaulticConnReachable, "Dépôt joignable."}
+		return vaulticProbeResult{vaulticConnReachable, vaulticT("Dépôt joignable.")}
 	case errors.Is(err, context.Canceled):
-		return vaulticProbeResult{vaulticConnNotTested, "Test annulé."}
+		return vaulticProbeResult{vaulticConnNotTested, vaulticT("Test annulé.")}
 	case errors.Is(err, context.DeadlineExceeded):
-		return vaulticProbeResult{vaulticConnUnavailable, "Délai dépassé : le stockage ne répond pas."}
+		return vaulticProbeResult{vaulticConnUnavailable, vaulticT("Délai dépassé : le stockage ne répond pas.")}
 	case errors.Is(err, repository.ErrNoKeyFound):
-		return vaulticProbeResult{vaulticConnAuthFailed, "Dépôt joignable, mais le mot de passe restic est incorrect."}
+		return vaulticProbeResult{vaulticConnAuthFailed, vaulticT("Dépôt joignable, mais le mot de passe restic est incorrect.")}
 	case errors.Is(err, global.ErrNoRepository):
-		return vaulticProbeResult{vaulticConnUnavailable, "Stockage joignable, mais aucun dépôt restic à cet emplacement."}
+		return vaulticProbeResult{vaulticConnUnavailable, vaulticT("Stockage joignable, mais aucun dépôt restic à cet emplacement.")}
 	}
 	message := err.Error()
 	if !passwordGiven && strings.Contains(message, vaulticPasswordRequiredMessage) {
 		// The engine got as far as asking for the password: the backend opened
 		// and the repository config file exists.
-		return vaulticProbeResult{vaulticConnReachable, "Dépôt joignable. Le mot de passe n'a pas encore été vérifié."}
+		return vaulticProbeResult{vaulticConnReachable, vaulticT("Dépôt joignable. Le mot de passe n'a pas encore été vérifié.")}
 	}
 	lower := strings.ToLower(message)
 	// Network problems come first: a refused TCP connection says nothing about
 	// the credentials.
 	for _, hint := range vaulticNetworkHints {
 		if strings.Contains(lower, hint) {
-			return vaulticProbeResult{vaulticConnUnavailable, "Erreur réseau : le serveur de stockage ou d'authentification est injoignable (" + message + ")"}
+			return vaulticProbeResult{vaulticConnUnavailable, vaulticT("Erreur réseau : le serveur de stockage ou d'authentification est injoignable (") + message + ")"}
 		}
 	}
 	for _, hint := range vaulticDeniedHints {
 		if strings.Contains(lower, hint) {
-			return vaulticProbeResult{vaulticConnAuthFailed, "Accès refusé : les identifiants sont reconnus mais n'ont pas les droits sur ce conteneur ou dépôt."}
+			return vaulticProbeResult{vaulticConnAuthFailed, vaulticT("Accès refusé : les identifiants sont reconnus mais n'ont pas les droits sur ce conteneur ou dépôt.")}
 		}
 	}
 	for _, hint := range vaulticAuthFailureHints {
 		if strings.Contains(lower, hint) {
-			return vaulticProbeResult{vaulticConnAuthFailed, "Identifiants refusés par le stockage (clés cloud, SSH, serveur ou Keystone)."}
+			return vaulticProbeResult{vaulticConnAuthFailed, vaulticT("Identifiants refusés par le stockage (clés cloud, SSH, serveur ou Keystone).")}
 		}
 	}
-	return vaulticProbeResult{vaulticConnUnavailable, "Dépôt inaccessible : " + message}
+	return vaulticProbeResult{vaulticConnUnavailable, vaulticT("Dépôt inaccessible : ") + message}
 }
 
 // vaulticProbeRepository opens the repository with a timeout. Without a

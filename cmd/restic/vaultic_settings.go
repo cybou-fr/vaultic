@@ -35,7 +35,9 @@ type vaulticSettings struct {
 	// categories are chosen by the user. Neither contains credentials.
 	SchedulerPaused bool `json:"scheduler_paused,omitempty"`
 	// CloseToTray hides the window instead of quitting when it is closed.
-	CloseToTray   bool                `json:"close_to_tray,omitempty"`
+	CloseToTray bool `json:"close_to_tray,omitempty"`
+	// Language is "auto" (or empty), "fr" or "en".
+	Language      string              `json:"language,omitempty"`
 	Notifications *vaulticNotifyPrefs `json:"notifications,omitempty"`
 }
 
@@ -51,7 +53,7 @@ type vaulticBackupProfile struct {
 
 func (s *vaulticSettings) migrateBackupProfiles() int {
 	if len(s.Profiles) == 0 {
-		s.Profiles = []vaulticBackupProfile{{Name: "Par défaut", Sources: s.Sources}}
+		s.Profiles = []vaulticBackupProfile{{Name: vaulticT("Par défaut"), Sources: s.Sources}}
 	}
 	for i, profile := range s.Profiles {
 		if profile.Name == s.ActiveProfile {
@@ -63,12 +65,12 @@ func (s *vaulticSettings) migrateBackupProfiles() int {
 
 func vaulticValidateDepot(value string) error {
 	if strings.TrimSpace(strings.TrimPrefix(value, "local:")) == "" {
-		return fmt.Errorf("indiquez l’emplacement du dépôt")
+		return errors.New(vaulticT("indiquez l’emplacement du dépôt"))
 	}
 	if !vaulticLocalRepository(value) && !strings.HasPrefix(value, "local:") {
 		scheme, endpoint, _ := strings.Cut(value, ":")
 		if strings.ContainsAny(endpoint, "?#") {
-			return fmt.Errorf("retirez les paramètres et jetons de l’adresse du dépôt")
+			return errors.New(vaulticT("retirez les paramètres et jetons de l’adresse du dépôt"))
 		}
 		if strings.HasPrefix(endpoint, "//") {
 			endpoint = scheme + ":" + endpoint
@@ -76,22 +78,22 @@ func vaulticValidateDepot(value string) error {
 		if strings.Contains(endpoint, "://") {
 			parsed, err := url.Parse(endpoint)
 			if err != nil {
-				return fmt.Errorf("utilisez une adresse sans identifiants intégrés")
+				return errors.New(vaulticT("utilisez une adresse sans identifiants intégrés"))
 			}
 			if _, hasPassword := parsed.User.Password(); parsed.User != nil && (scheme != "sftp" || hasPassword) {
-				return fmt.Errorf("utilisez une adresse sans identifiants intégrés")
+				return errors.New(vaulticT("utilisez une adresse sans identifiants intégrés"))
 			}
 			if scheme == "rest" && (parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http")) {
-				return fmt.Errorf("indiquez une adresse REST HTTP ou HTTPS valide")
+				return errors.New(vaulticT("indiquez une adresse REST HTTP ou HTTPS valide"))
 			}
 		} else if scheme == "rest" {
-			return fmt.Errorf("indiquez une adresse REST HTTP ou HTTPS valide")
+			return errors.New(vaulticT("indiquez une adresse REST HTTP ou HTTPS valide"))
 		} else if host, _, _ := strings.Cut(endpoint, "/"); scheme != "sftp" && strings.Contains(host, "@") {
-			return fmt.Errorf("utilisez une adresse sans identifiants intégrés")
+			return errors.New(vaulticT("utilisez une adresse sans identifiants intégrés"))
 		}
 	}
 	if _, err := location.Parse(all.Backends(), value); err != nil {
-		return fmt.Errorf("emplacement ou type de dépôt non valide")
+		return errors.New(vaulticT("emplacement ou type de dépôt non valide"))
 	}
 	return nil
 }
@@ -113,7 +115,7 @@ func vaulticPortablePath(path string) string {
 
 func (s *vaulticSettings) migrateDepots() {
 	if len(s.Depots) == 0 && vaulticValidateDepot(s.Repository) == nil {
-		s.Depots = []vaulticDepot{{Name: "Dépôt existant", Location: s.Repository}}
+		s.Depots = []vaulticDepot{{Name: vaulticT("Dépôt existant"), Location: s.Repository}}
 	}
 	active := ""
 	valid := s.Depots[:0]
@@ -158,14 +160,14 @@ func vaulticLoadSettings() (vaulticSettings, error) {
 		return s, err
 	}
 	if !info.Mode().IsRegular() {
-		return s, errors.New("Le fichier de préférences doit être un fichier ordinaire")
+		return s, errors.New(vaulticT("Le fichier de préférences doit être un fichier ordinaire"))
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return s, err
 	}
 	if err := json.Unmarshal(data, &s); err != nil {
-		return vaulticSettings{}, fmt.Errorf("Préférences illisibles : %w", err)
+		return vaulticSettings{}, fmt.Errorf(vaulticT("Préférences illisibles : %w"), err)
 	}
 	s.migrateDepots()
 	return s, nil
@@ -178,7 +180,7 @@ func vaulticSaveSettings(s vaulticSettings) error {
 	}
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() {
-			return errors.New("Le fichier de préférences doit être un fichier ordinaire")
+			return errors.New(vaulticT("Le fichier de préférences doit être un fichier ordinaire"))
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err

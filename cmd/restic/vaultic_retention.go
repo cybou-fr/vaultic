@@ -52,11 +52,11 @@ func vaulticCloneRetention(r *vaulticRetention) *vaulticRetention {
 func (r vaulticRetention) Validate() error {
 	for _, n := range []int{r.KeepLast, r.KeepDaily, r.KeepWeekly, r.KeepMonthly, r.KeepYearly} {
 		if n < 0 || n > vaulticRetentionMax {
-			return fmt.Errorf("Chaque valeur doit être comprise entre 0 et %d.", vaulticRetentionMax)
+			return fmt.Errorf(vaulticT("Chaque valeur doit être comprise entre 0 et %d."), vaulticRetentionMax)
 		}
 	}
 	if r.KeepLast+r.KeepDaily+r.KeepWeekly+r.KeepMonthly+r.KeepYearly == 0 {
-		return errors.New("Indiquez au moins une règle de conservation : sans règle, tout serait supprimé.")
+		return errors.New(vaulticT("Indiquez au moins une règle de conservation : sans règle, tout serait supprimé."))
 	}
 	return nil
 }
@@ -77,16 +77,16 @@ func (r vaulticRetention) Describe() string {
 			if n == 1 {
 				parts = append(parts, "1 "+singular)
 			} else {
-				parts = append(parts, fmt.Sprintf("%d %s", n, plural))
+				parts = append(parts, fmt.Sprintf(vaulticT("%d %s"), n, plural))
 			}
 		}
 	}
-	add(max(r.KeepLast, 1), "dernier instantané", "derniers instantanés")
-	add(r.KeepDaily, "par jour", "jours (un par jour)")
-	add(r.KeepWeekly, "par semaine", "semaines (un par semaine)")
-	add(r.KeepMonthly, "par mois", "mois (un par mois)")
-	add(r.KeepYearly, "par an", "ans (un par an)")
-	return "Conserver : " + strings.Join(parts, ", ")
+	add(max(r.KeepLast, 1), vaulticT("dernier instantané"), vaulticT("derniers instantanés"))
+	add(r.KeepDaily, vaulticT("par jour"), vaulticT("jours (un par jour)"))
+	add(r.KeepWeekly, vaulticT("par semaine"), vaulticT("semaines (un par semaine)"))
+	add(r.KeepMonthly, vaulticT("par mois"), vaulticT("mois (un par mois)"))
+	add(r.KeepYearly, "par an", vaulticT("ans (un par an)"))
+	return vaulticT("Conserver : ") + strings.Join(parts, ", ")
 }
 
 // vaulticRetentionItem is one snapshot in a preview.
@@ -190,7 +190,7 @@ func vaulticEvaluateRetention(all []vaulticSnapshot, host string, sources []stri
 	}
 	// The newest snapshot of a group is never removed, whatever happened above.
 	if len(keep) == 0 && len(group) > 0 {
-		return nil, nil, 0, errors.New("la politique supprimerait tous les instantanés : refusé")
+		return nil, nil, 0, errors.New(vaulticT("la politique supprimerait tous les instantanés : refusé"))
 	}
 	return keep, remove, others, nil
 }
@@ -213,10 +213,10 @@ func vaulticPreviewRetention(all []vaulticSnapshot, profile, repository, host st
 // are always a subset of what the preview showed.
 func vaulticConfirmRetention(p vaulticRetentionPreview, current []vaulticSnapshot, host string, sources []string, now time.Time) ([]string, error) {
 	if p.Fingerprint != vaulticRetentionFingerprint(p.Profile, p.Repository, p.Policy, p.Remove) {
-		return nil, errors.New("L'aperçu a été modifié : recommencez l'aperçu.")
+		return nil, errors.New(vaulticT("L'aperçu a été modifié : recommencez l'aperçu."))
 	}
 	if now.Sub(p.CreatedAt) > vaulticRetentionPreviewTTL || now.Before(p.CreatedAt) {
-		return nil, errors.New("L'aperçu est trop ancien : recommencez l'aperçu avant de supprimer.")
+		return nil, errors.New(vaulticT("L'aperçu est trop ancien : recommencez l'aperçu avant de supprimer."))
 	}
 	_, remove, _, err := vaulticEvaluateRetention(current, host, sources, p.Policy)
 	if err != nil {
@@ -236,15 +236,15 @@ func vaulticConfirmRetention(p vaulticRetentionPreview, current []vaulticSnapsho
 			continue // already gone
 		}
 		if !now2[item.ID] {
-			return nil, errors.New("Le dépôt a changé depuis l'aperçu : un instantané prévu pour suppression doit désormais être conservé. Recommencez l'aperçu.")
+			return nil, errors.New(vaulticT("Le dépôt a changé depuis l'aperçu : un instantané prévu pour suppression doit désormais être conservé. Recommencez l'aperçu."))
 		}
 		if !vaulticFullSnapshotID.MatchString(item.ID) {
-			return nil, errors.New("Identifiant d'instantané invalide.")
+			return nil, errors.New(vaulticT("Identifiant d'instantané invalide."))
 		}
 		ids = append(ids, item.ID)
 	}
 	if len(ids) == 0 {
-		return nil, errors.New("Il n'y a plus rien à supprimer.")
+		return nil, errors.New(vaulticT("Il n'y a plus rien à supprimer."))
 	}
 	return ids, nil
 }

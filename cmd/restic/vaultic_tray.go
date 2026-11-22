@@ -33,10 +33,10 @@ func newVaulticTray(app fyne.App) (*vaulticTray, bool) {
 // vaulticTrayMenu builds the menu from the hooks.
 func vaulticTrayMenu(h vaulticTrayHooks) *fyne.Menu {
 	return fyne.NewMenu("Vaultic",
-		fyne.NewMenuItem("Ouvrir Vaultic", h.Show),
-		fyne.NewMenuItem("Sauvegarder maintenant", h.BackupNow),
+		fyne.NewMenuItem(vaulticT("Ouvrir Vaultic"), h.Show),
+		fyne.NewMenuItem(vaulticT("Sauvegarder maintenant"), h.BackupNow),
 		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Quitter Vaultic", h.Quit),
+		fyne.NewMenuItem(vaulticT("Quitter Vaultic"), h.Quit),
 	)
 }
 

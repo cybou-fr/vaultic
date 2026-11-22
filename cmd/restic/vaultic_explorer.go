@@ -38,14 +38,14 @@ type vaulticLimitedBuffer struct {
 
 func (b *vaulticLimitedBuffer) Write(data []byte) (int, error) {
 	if len(data) > b.Limit-b.Len() {
-		return 0, errors.New("Le dossier contient trop d'éléments pour être affiché")
+		return 0, errors.New(vaulticT("Le dossier contient trop d'éléments pour être affiché"))
 	}
 	return b.Buffer.Write(data)
 }
 
 func vaulticValidateSnapshotPath(p string) error {
 	if p == "" || !strings.HasPrefix(p, "/") || path.Clean(p) != p || strings.ContainsRune(p, '\x00') {
-		return fmt.Errorf("Chemin d'instantané invalide : %q", p)
+		return fmt.Errorf(vaulticT("Chemin d'instantané invalide : %q"), p)
 	}
 	return nil
 }
@@ -53,7 +53,7 @@ func vaulticValidateSnapshotPath(p string) error {
 // Calls upstream restic's in-process ls implementation, without any CLI process.
 func vaulticListSnapshotDirectory(ctx context.Context, opts global.Options, id, dir string) ([]vaulticSnapshotNode, error) {
 	if !vaulticSnapshotID.MatchString(id) {
-		return nil, errors.New("Identifiant d'instantané invalide")
+		return nil, errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	if err := vaulticValidateSnapshotPath(dir); err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func vaulticListSnapshotDirectory(ctx context.Context, opts global.Options, id, 
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, fmt.Errorf("Lecture des éléments : %w", err)
+			return nil, fmt.Errorf(vaulticT("Lecture des éléments : %w"), err)
 		}
 		if n.MessageType != "node" {
 			continue
@@ -102,11 +102,11 @@ func vaulticListSnapshotDirectory(ctx context.Context, opts global.Options, id, 
 // Walk the snapshot once and stop after one additional match confirms truncation.
 func vaulticSearchSnapshot(ctx context.Context, opts global.Options, id, query string, limit int) ([]vaulticSnapshotNode, bool, error) {
 	if !vaulticSnapshotID.MatchString(id) {
-		return nil, false, errors.New("Identifiant d'instantané invalide")
+		return nil, false, errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
-		return nil, false, errors.New("Saisissez un nom ou un chemin à rechercher")
+		return nil, false, errors.New(vaulticT("Saisissez un nom ou un chemin à rechercher"))
 	}
 	printer := ui.NewProgressPrinter(opts.JSON, opts.Verbosity, opts.Term)
 	ctx, repo, unlock, err := openWithReadLock(ctx, opts, opts.NoLock, printer)
@@ -123,10 +123,10 @@ func vaulticSearchSnapshot(ctx context.Context, opts global.Options, id, query s
 		return nil, false, err
 	}
 	if snapshot.Tree == nil {
-		return nil, false, errors.New("Cet instantané n’a pas d’arborescence")
+		return nil, false, errors.New(vaulticT("Cet instantané n’a pas d’arborescence"))
 	}
 	var matches []vaulticSnapshotNode
-	limitReached := errors.New("limite de résultats atteinte")
+	limitReached := errors.New(vaulticT("limite de résultats atteinte"))
 	err = walker.Walk(ctx, repo, *snapshot.Tree, walker.WalkVisitor{
 		ProcessNode: func(_ restic.ID, location string, node *data.Node, err error) error {
 			if err != nil || node == nil {
@@ -134,7 +134,7 @@ func vaulticSearchSnapshot(ctx context.Context, opts global.Options, id, query s
 			}
 			if node.Name == "." || node.Name == ".." || node.Name != path.Base(node.Name) ||
 				(filepath.Separator != '/' && strings.ContainsRune(node.Name, filepath.Separator)) {
-				return fmt.Errorf("Nom invalide dans l'instantané : %q", node.Name)
+				return fmt.Errorf(vaulticT("Nom invalide dans l'instantané : %q"), node.Name)
 			}
 			if err := vaulticValidateSnapshotPath(location); err != nil {
 				return err
@@ -189,20 +189,20 @@ func vaulticSelectionFilter(nodes []vaulticSnapshotNode) func(string, bool) (boo
 // packages, with no subprocess, deletions or overwriting existing files.
 func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string, nodes []vaulticSnapshotNode, destination string) error {
 	if !vaulticSnapshotID.MatchString(id) {
-		return errors.New("Identifiant d'instantané invalide")
+		return errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	if len(nodes) == 0 {
-		return errors.New("Sélectionnez un fichier ou un dossier")
+		return errors.New(vaulticT("Sélectionnez un fichier ou un dossier"))
 	}
 	for _, node := range nodes {
 		if node.Path == "/" {
-			return errors.New("Sélectionnez un fichier ou un dossier")
+			return errors.New(vaulticT("Sélectionnez un fichier ou un dossier"))
 		}
 		if err := vaulticValidateSnapshotPath(node.Path); err != nil {
 			return err
 		}
 		if !vaulticRestorableNode(node) {
-			return errors.New("Type d'élément non pris en charge")
+			return errors.New(vaulticT("Type d'élément non pris en charge"))
 		}
 	}
 	return vaulticRestoreSnapshot(ctx, opts, id, nodes, destination)
@@ -210,7 +210,7 @@ func vaulticRestoreSelected(ctx context.Context, opts global.Options, id string,
 
 func vaulticRestoreSnapshot(ctx context.Context, opts global.Options, id string, nodes []vaulticSnapshotNode, destination string) error {
 	if !vaulticSnapshotID.MatchString(id) {
-		return errors.New("Identifiant d'instantané invalide")
+		return errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	target, err := vaulticRestoreTarget(destination)
 	if err != nil {
@@ -253,7 +253,7 @@ func vaulticRestoreSnapshot(ctx context.Context, opts global.Options, id string,
 		return err
 	}
 	if !os.SameFile(originalTarget, currentTarget) {
-		return errors.New("Le dossier de restauration a changé. Sélectionnez-le à nouveau.")
+		return errors.New(vaulticT("Le dossier de restauration a changé. Sélectionnez-le à nouveau."))
 	}
 	progress := restoreui.NewProgress(printer, ui.CalculateProgressInterval(!opts.Quiet, true, opts.Term.CanUpdateStatus()))
 	r := restorer.NewRestorer(repo, snapshot, restorer.Options{
@@ -264,7 +264,7 @@ func vaulticRestoreSnapshot(ctx context.Context, opts global.Options, id string,
 	})
 	r.SelectFilter = selectNode
 	r.Error = func(location string, e error) error {
-		printer.E("Erreur de restauration de %q : %v", location, e)
+		printer.E(vaulticT("Erreur de restauration de %q : %v"), location, e)
 		return e
 	}
 	_, err = r.RestoreTo(ctx, target)

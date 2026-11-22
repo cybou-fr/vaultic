@@ -78,17 +78,17 @@ func vaulticCheckStale(s vaulticSchedule, lastSuccess, now time.Time) vaulticSta
 func vaulticFormatAge(d time.Duration) string {
 	switch {
 	case d >= 48*time.Hour:
-		return fmt.Sprintf("%d jours", int(d/(24*time.Hour)))
+		return fmt.Sprintf(vaulticT("%d jours"), int(d/(24*time.Hour)))
 	case d >= 2*time.Hour:
-		return fmt.Sprintf("%d heures", int(d/time.Hour))
+		return fmt.Sprintf(vaulticT("%d heures"), int(d/time.Hour))
 	}
-	return fmt.Sprintf("%d minutes", max(int(d/time.Minute), 1))
+	return fmt.Sprintf(vaulticT("%d minutes"), max(int(d/time.Minute), 1))
 }
 
 // vaulticStaleMessage is the warning shown for a stale schedule.
 func vaulticStaleMessage(profile string, st vaulticStaleness) string {
 	if st.Never {
-		return fmt.Sprintf("Aucune sauvegarde réussie du profil « %s » depuis %s, alors qu'une planification est active.", profile, vaulticFormatAge(st.Age))
+		return fmt.Sprintf(vaulticT("Aucune sauvegarde réussie du profil « %s » depuis %s, alors qu'une planification est active."), profile, vaulticFormatAge(st.Age))
 	}
-	return fmt.Sprintf("La dernière sauvegarde réussie du profil « %s » date d'il y a %s : plus de deux fois l'intervalle prévu.", profile, vaulticFormatAge(st.Age))
+	return fmt.Sprintf(vaulticT("La dernière sauvegarde réussie du profil « %s » date d'il y a %s : plus de deux fois l'intervalle prévu."), profile, vaulticFormatAge(st.Age))
 }

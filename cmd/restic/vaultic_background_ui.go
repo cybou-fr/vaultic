@@ -34,16 +34,16 @@ type vaulticBackgroundController struct {
 
 func newVaulticBackgroundController(hooks vaulticBackgroundHooks) *vaulticBackgroundController {
 	c := &vaulticBackgroundController{hooks: hooks}
-	c.CloseToTray = widget.NewCheck("Fermer la fenêtre réduit Vaultic dans la zone de notification", c.onCloseToTray)
-	c.Autostart = widget.NewCheck("Démarrer Vaultic avec ma session (réduit dans la zone de notification)", c.onAutostart)
-	info := vaulticWrappedLabel("Les sauvegardes planifiées ne s'exécutent que pendant que Vaultic tourne. " +
+	c.CloseToTray = widget.NewCheck(vaulticT("Fermer la fenêtre réduit Vaultic dans la zone de notification"), c.onCloseToTray)
+	c.Autostart = widget.NewCheck(vaulticT("Démarrer Vaultic avec ma session (réduit dans la zone de notification)"), c.onAutostart)
+	info := vaulticWrappedLabel(vaulticT("Les sauvegardes planifiées ne s'exécutent que pendant que Vaultic tourne. " +
 		"Le processus reste visible dans la zone de notification ; « Quitter Vaultic » y arrête tout. " +
-		"Aucun service système ni tâche du planificateur de l'ordinateur n'est créé.")
+		"Aucun service système ni tâche du planificateur de l'ordinateur n'est créé."))
 	c.Content = container.NewVBox(c.CloseToTray, c.Autostart, info)
 	if !hooks.TrayAvailable {
 		c.CloseToTray.Disable()
 		c.Autostart.Disable()
-		c.Content.(*fyne.Container).Add(vaulticWrappedLabel("Aucune zone de notification n'est disponible sur cet ordinateur : ces options sont désactivées."))
+		c.Content.(*fyne.Container).Add(vaulticWrappedLabel(vaulticT("Aucune zone de notification n'est disponible sur cet ordinateur : ces options sont désactivées.")))
 	}
 	c.Sync()
 	return c
@@ -57,7 +57,7 @@ func (c *vaulticBackgroundController) Sync() {
 	enabled, err := c.hooks.Autostart.Enabled()
 	if err != nil {
 		c.Autostart.Disable()
-		c.hooks.Log("Démarrage automatique : état illisible (" + err.Error() + ").")
+		c.hooks.Log(vaulticT("Démarrage automatique : état illisible (") + err.Error() + ").")
 		return
 	}
 	c.Autostart.SetChecked(enabled)
@@ -100,8 +100,8 @@ func (c *vaulticBackgroundController) onAutostart(on bool) {
 		return
 	}
 	if on {
-		c.hooks.Log("Démarrage automatique activé (" + c.hooks.Autostart.Name() + ").")
+		c.hooks.Log(vaulticT("Démarrage automatique activé (") + c.hooks.Autostart.Name() + ").")
 	} else {
-		c.hooks.Log("Démarrage automatique désactivé.")
+		c.hooks.Log(vaulticT("Démarrage automatique désactivé."))
 	}
 }

@@ -24,7 +24,7 @@ func vaulticCollectStorageStatistics(ctx context.Context, options global.Options
 	var result vaulticStorageStatistics
 	terminal, ok := options.Term.(*vaulticTerminal)
 	if !ok {
-		return result, errors.New("Terminal Vaultic requis pour les statistiques")
+		return result, errors.New(vaulticT("Terminal Vaultic requis pour les statistiques"))
 	}
 
 	var output bytes.Buffer
@@ -34,21 +34,21 @@ func vaulticCollectStorageStatistics(ctx context.Context, options global.Options
 
 	options.JSON = true
 	if err := runStats(ctx, StatsOptions{countMode: countModeRawData}, options, nil, terminal); err != nil {
-		return result, fmt.Errorf("Analyse de l'espace : %w", err)
+		return result, fmt.Errorf(vaulticT("Analyse de l'espace : %w"), err)
 	}
 	if output.Len() > 1<<20 {
-		return result, errors.New("Réponse de statistiques trop volumineuse")
+		return result, errors.New(vaulticT("Réponse de statistiques trop volumineuse"))
 	}
 	decoder := json.NewDecoder(&output)
 	if err := decoder.Decode(&result); err != nil {
-		return result, fmt.Errorf("Statistiques illisibles : %w", err)
+		return result, fmt.Errorf(vaulticT("Statistiques illisibles : %w"), err)
 	}
 	var extra json.RawMessage
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return result, errors.New("Statistiques supplémentaires inattendues")
+			return result, errors.New(vaulticT("Statistiques supplémentaires inattendues"))
 		}
-		return result, fmt.Errorf("Réponse de statistiques invalide : %w", err)
+		return result, fmt.Errorf(vaulticT("Réponse de statistiques invalide : %w"), err)
 	}
 	return result, nil
 }

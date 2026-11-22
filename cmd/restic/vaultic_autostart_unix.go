@@ -20,8 +20,8 @@ func newVaulticSystemAutostart() vaulticAutostart {
 
 type vaulticNoAutostart struct{}
 
-func (vaulticNoAutostart) Name() string           { return "Démarrage automatique indisponible" }
+func (vaulticNoAutostart) Name() string           { return vaulticT("Démarrage automatique indisponible") }
 func (vaulticNoAutostart) Enabled() (bool, error) { return false, nil }
 func (vaulticNoAutostart) Set(bool, string) error {
-	return errors.New("démarrage automatique non pris en charge ici")
+	return errors.New(vaulticT("démarrage automatique non pris en charge ici"))
 }

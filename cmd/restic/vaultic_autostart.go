@@ -30,8 +30,8 @@ func vaulticAutostartCommand(executable string) string {
 
 // vaulticDesktopEntry is the XDG autostart file used on Linux.
 func vaulticDesktopEntry(executable string) string {
-	return "[Desktop Entry]\nType=Application\nName=Vaultic\nComment=Sauvegardes chiffrées\n" +
-		"Exec=" + strings.ReplaceAll(executable, " ", `\ `) + " " + vaulticBackgroundFlag + "\n" +
+	return vaulticT("[Desktop Entry]\nType=Application\nName=Vaultic\nComment=Sauvegardes chiffrées\n"+
+		"Exec=") + strings.ReplaceAll(executable, " ", `\ `) + " " + vaulticBackgroundFlag + "\n" +
 		"X-GNOME-Autostart-enabled=true\nTerminal=false\n"
 }
 
@@ -75,7 +75,7 @@ func (a vaulticFileAutostart) Set(enabled bool, executable string) error {
 		return nil
 	}
 	if executable == "" {
-		return errors.New("chemin de l'exécutable inconnu")
+		return errors.New(vaulticT("chemin de l'exécutable inconnu"))
 	}
 	if err := os.MkdirAll(filepath.Dir(a.path), 0o755); err != nil {
 		return err
@@ -88,9 +88,9 @@ func (a vaulticFileAutostart) Set(enabled bool, executable string) error {
 func vaulticAutostartFor(goos, home string) (vaulticAutostart, error) {
 	switch goos {
 	case "linux":
-		return vaulticFileAutostart{label: "Démarrage automatique de la session (XDG)", path: filepath.Join(home, ".config", "autostart", "vaultic.desktop"), content: vaulticDesktopEntry}, nil
+		return vaulticFileAutostart{label: vaulticT("Démarrage automatique de la session (XDG)"), path: filepath.Join(home, ".config", "autostart", "vaultic.desktop"), content: vaulticDesktopEntry}, nil
 	case "darwin":
-		return vaulticFileAutostart{label: "Éléments d'ouverture de la session (LaunchAgent)", path: filepath.Join(home, "Library", "LaunchAgents", "fr.cybou.vaultic.plist"), content: vaulticLaunchAgent}, nil
+		return vaulticFileAutostart{label: vaulticT("Éléments d'ouverture de la session (LaunchAgent)"), path: filepath.Join(home, "Library", "LaunchAgents", "fr.cybou.vaultic.plist"), content: vaulticLaunchAgent}, nil
 	}
-	return nil, fmt.Errorf("démarrage automatique non pris en charge sur %s", goos)
+	return nil, fmt.Errorf(vaulticT("démarrage automatique non pris en charge sur %s"), goos)
 }

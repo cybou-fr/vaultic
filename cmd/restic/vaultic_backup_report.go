@@ -56,7 +56,7 @@ func (r *vaulticBackupReport) result(err error) (outcome, details string, result
 	defer r.mu.Unlock()
 	snapshot := r.summary.SnapshotID
 	if err == nil && !vaulticSnapshotID.MatchString(snapshot) {
-		err = errors.New("Aucun identifiant d’instantané confirmé par le moteur.")
+		err = errors.New(vaulticT("Aucun identifiant d’instantané confirmé par le moteur."))
 	}
 	errorCount := max(r.reportedErrors, r.status.ErrorCount)
 	if err == nil && errorCount > 0 {
@@ -64,28 +64,28 @@ func (r *vaulticBackupReport) result(err error) (outcome, details string, result
 	}
 	switch {
 	case err == nil:
-		outcome = "Réussie"
+		outcome = vaulticT("Réussie")
 	case errors.Is(err, context.Canceled):
-		outcome = "Annulée"
+		outcome = vaulticT("Annulée")
 	case errors.Is(err, ErrInvalidSourceData):
-		outcome = "Incomplète"
-		err = errors.New("Au moins un fichier source n’a pas pu être lu. Consultez le journal pour les détails.")
+		outcome = vaulticT("Incomplète")
+		err = errors.New(vaulticT("Au moins un fichier source n’a pas pu être lu. Consultez le journal pour les détails."))
 	default:
-		outcome = "Échec"
+		outcome = vaulticT("Échec")
 	}
 	duration := time.Since(r.started)
 	if r.summary.TotalDuration > 0 {
 		duration = time.Duration(r.summary.TotalDuration * float64(time.Second))
 	}
-	lines := []string{outcome, "Profil : " + r.profile, "Durée : " + duration.Round(time.Millisecond).String()}
+	lines := []string{outcome, vaulticT("Profil : ") + r.profile, vaulticT("Durée : ") + duration.Round(time.Millisecond).String()}
 	if r.summary.MessageType == "summary" {
-		lines = append(lines, fmt.Sprintf("Fichiers traités : %d\nDonnées traitées : %s", r.summary.FilesProcessed, vaulticBytes(r.summary.BytesProcessed)))
+		lines = append(lines, fmt.Sprintf(vaulticT("Fichiers traités : %d\nDonnées traitées : %s"), r.summary.FilesProcessed, vaulticBytes(r.summary.BytesProcessed)))
 	} else if r.status.MessageType == "status" {
-		lines = append(lines, fmt.Sprintf("Dernier relevé : %d fichier(s), %s", r.status.FilesDone, vaulticBytes(r.status.BytesDone)))
+		lines = append(lines, fmt.Sprintf(vaulticT("Dernier relevé : %d fichier(s), %s"), r.status.FilesDone, vaulticBytes(r.status.BytesDone)))
 	}
-	lines = append(lines, fmt.Sprintf("Erreurs signalées par le moteur : %d", errorCount))
+	lines = append(lines, fmt.Sprintf(vaulticT("Erreurs signalées par le moteur : %d"), errorCount))
 	if snapshot != "" {
-		lines = append(lines, "Instantané : "+snapshot)
+		lines = append(lines, vaulticT("Instantané : ")+snapshot)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		lines = append(lines, err.Error())
@@ -94,7 +94,7 @@ func (r *vaulticBackupReport) result(err error) (outcome, details string, result
 }
 
 func vaulticBytes(count uint64) string {
-	units := [...]string{"o", "Kio", "Mio", "Gio", "Tio", "Pio", "Eio"}
+	units := [...]string{vaulticT("o"), vaulticT("Kio"), vaulticT("Mio"), vaulticT("Gio"), vaulticT("Tio"), vaulticT("Pio"), vaulticT("Eio")}
 	value := float64(count)
 	unit := 0
 	for value >= 1024 && unit < len(units)-1 {
@@ -102,7 +102,11 @@ func vaulticBytes(count uint64) string {
 		unit++
 	}
 	if unit == 0 {
-		return fmt.Sprintf("%d o", count)
+		return fmt.Sprintf(vaulticT("%d o"), count)
 	}
-	return strings.ReplaceAll(fmt.Sprintf("%.1f %s", value, units[unit]), ".", ",")
+	text := fmt.Sprintf(vaulticT("%.1f %s"), value, units[unit])
+	if vaulticLanguage() == vaulticLangFR {
+		text = strings.ReplaceAll(text, ".", ",") // French decimal comma
+	}
+	return text
 }

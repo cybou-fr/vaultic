@@ -67,7 +67,7 @@ func (r *vaulticEngineRunner) Closing() bool { return r.closing }
 func (r *vaulticEngineRunner) RequestCancel() {
 	if r.cancel != nil {
 		// Status first: the operation reports its own end once cancelled.
-		r.hooks.Panel.Status.SetText("Annulation…")
+		r.hooks.Panel.Status.SetText(vaulticT("Annulation…"))
 		r.cancel()
 	}
 }
@@ -79,7 +79,7 @@ func (r *vaulticEngineRunner) BeginClose() bool {
 		return false
 	}
 	r.closing = true
-	r.hooks.Panel.Status.SetText("Annulation avant fermeture…")
+	r.hooks.Panel.Status.SetText(vaulticT("Annulation avant fermeture…"))
 	r.cancel()
 	return true
 }
@@ -94,7 +94,7 @@ func vaulticMissingConnectionInfo(repo, password string, allowNoPassword bool) b
 // detail by a message for the user.
 func vaulticFriendlyEngineError(err error) error {
 	if errors.Is(err, repository.ErrNoKeyFound) {
-		return errors.New("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt.")
+		return errors.New(vaulticT("Mot de passe incorrect ou aucune clé utilisable dans ce dépôt."))
 	}
 	return err
 }
@@ -106,7 +106,7 @@ func vaulticCheckLocalRepositoryReachable(repo, resolved string) error {
 		return nil
 	}
 	if _, err := os.Stat(resolved); err != nil {
-		return fmt.Errorf("dépôt inaccessible. Vérifiez le chemin et le branchement du disque : %w", err)
+		return fmt.Errorf(vaulticT("dépôt inaccessible. Vérifiez le chemin et le branchement du disque : %w"), err)
 	}
 	return nil
 }
@@ -155,11 +155,11 @@ func (r *vaulticEngineRunner) Run(title, repo, password string, opts vaulticRunO
 	h := r.hooks
 	w := h.Window
 	if vaulticMissingConnectionInfo(repo, password, opts.AllowNoPassword) {
-		dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", w)
+		dialog.ShowInformation(vaulticT("Informations manquantes"), vaulticT("Indiquez un dépôt et son mot de passe."), w)
 		return
 	}
 	if !h.Busy.CompareAndSwap(false, true) {
-		dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", w)
+		dialog.ShowInformation(vaulticT("Opération en cours"), vaulticT("Une seule opération est autorisée à la fois."), w)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -167,7 +167,7 @@ func (r *vaulticEngineRunner) Run(title, repo, password string, opts vaulticRunO
 	h.SetBusy(true)
 	h.Panel.Progress.SetValue(0)
 	h.Panel.Status.SetText(title + "…")
-	h.Log("Début : " + title)
+	h.Log(vaulticT("Début : ") + title)
 	cloudAuth := h.CloudAuth(repo)
 	redact := vaulticRedactCloudSecrets(vaulticRedactOperation(password), cloudAuth)
 	go func() {
@@ -198,8 +198,8 @@ func (r *vaulticEngineRunner) Run(title, repo, password string, opts vaulticRunO
 			h.SetBusy(false)
 			status := h.Panel.Status
 			if errors.Is(err, context.Canceled) {
-				status.SetText(title + " — annulé")
-				h.Log("Annulé : " + title)
+				status.SetText(title + vaulticT(" — annulé"))
+				h.Log(vaulticT("Annulé : ") + title)
 				return
 			}
 			if err == nil && finish != nil {
@@ -210,7 +210,7 @@ func (r *vaulticEngineRunner) Run(title, repo, password string, opts vaulticRunO
 				if opts.Inline {
 					status.SetText(message)
 				} else {
-					status.SetText("Erreur : " + title)
+					status.SetText(vaulticT("Erreur : ") + title)
 				}
 				h.Log(message)
 				if !opts.Inline {
@@ -218,9 +218,9 @@ func (r *vaulticEngineRunner) Run(title, repo, password string, opts vaulticRunO
 				}
 				return
 			}
-			status.SetText(title + " — terminé")
+			status.SetText(title + vaulticT(" — terminé"))
 			h.Completed(title)
-			h.Log("Terminé : " + title)
+			h.Log(vaulticT("Terminé : ") + title)
 		})
 	}()
 }

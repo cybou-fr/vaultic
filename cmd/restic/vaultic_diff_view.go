@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -13,11 +14,12 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const (
-	vaulticDiffAll      = "Toutes"
-	vaulticDiffAdded    = "Ajoutés"
-	vaulticDiffModified = "Modifiés"
-	vaulticDiffRemoved  = "Supprimés"
+// These start in French and are rebuilt by vaulticLocalizeTables.
+var (
+	vaulticDiffAll      = vaulticL("Toutes")
+	vaulticDiffAdded    = vaulticL("Ajoutés")
+	vaulticDiffModified = vaulticL("Modifiés")
+	vaulticDiffRemoved  = vaulticL("Supprimés")
 )
 
 func vaulticDiffCategory(modifier string) string {
@@ -67,18 +69,18 @@ func vaulticFilterDiffChanges(changes []vaulticDiffRecord, category, search stri
 // Restic directory changes sometimes end in '/', which is only stripped here.
 func vaulticDiffRestoreSelection(c vaulticSnapshotComparison, entry vaulticDiffRecord) (string, string, error) {
 	if entry.Truncated {
-		return "", "", fmt.Errorf("Chemin trop long pour une restauration directe. Ouvrez l'instantané dans l'explorateur.")
+		return "", "", errors.New(vaulticT("Chemin trop long pour une restauration directe. Ouvrez l'instantané dans l'explorateur."))
 	}
 	itemPath := strings.TrimSuffix(entry.Path, "/")
 	if itemPath == "/" || vaulticValidateSnapshotPath(itemPath) != nil {
-		return "", "", fmt.Errorf("Chemin impossible à restaurer : %q", entry.Path)
+		return "", "", fmt.Errorf(vaulticT("Chemin impossible à restaurer : %q"), entry.Path)
 	}
 	id := c.TargetID
 	if vaulticDiffCategory(entry.Modifier) == vaulticDiffRemoved {
 		id = c.SourceID
 	}
 	if !vaulticSnapshotID.MatchString(id) {
-		return "", "", fmt.Errorf("Identifiant d'instantané invalide")
+		return "", "", errors.New(vaulticT("Identifiant d'instantané invalide"))
 	}
 	return id, itemPath, nil
 }
@@ -98,16 +100,16 @@ func vaulticDiffColumns(change vaulticDiffRecord) (before, after string) {
 }
 
 func vaulticDiffRowDescription(change vaulticDiffRecord) string {
-	status := "Contenu modifié"
+	status := vaulticT("Contenu modifié")
 	switch {
 	case vaulticDiffCategory(change.Modifier) == vaulticDiffAdded:
-		status = "Ajouté dans l'instantané après"
+		status = vaulticT("Ajouté dans l'instantané après")
 	case vaulticDiffCategory(change.Modifier) == vaulticDiffRemoved:
-		status = "Présent seulement dans l'instantané avant"
+		status = vaulticT("Présent seulement dans l'instantané avant")
 	case strings.Contains(change.Modifier, "T"):
-		status = "Type de fichier modifié"
+		status = vaulticT("Type de fichier modifié")
 	case strings.Contains(change.Modifier, "U"):
-		status = "Métadonnées modifiées"
+		status = vaulticT("Métadonnées modifiées")
 	}
 	return status + " · " + vaulticDiffDisplayPath(change.Path)
 }
@@ -115,34 +117,34 @@ func vaulticDiffRowDescription(change vaulticDiffRecord) string {
 func vaulticDiffVisibleStatus(c vaulticSnapshotComparison, category string, displayed int, search string) string {
 	total := vaulticDiffFilterCount(c, category)
 	if strings.TrimSpace(search) != "" {
-		return fmt.Sprintf("%d résultat(s) parmi les chemins chargés · %d modification(s) dans cette catégorie. La recherche ne porte que sur l'aperçu.", displayed, total)
+		return fmt.Sprintf(vaulticT("%d résultat(s) parmi les chemins chargés · %d modification(s) dans cette catégorie. La recherche ne porte que sur l'aperçu."), displayed, total)
 	}
 	if displayed < total {
-		return fmt.Sprintf("%d modification(s) affichée(s) sur %d · aperçu limité à %d par catégorie.", displayed, total, vaulticDiffPreviewLimit)
+		return fmt.Sprintf(vaulticT("%d modification(s) affichée(s) sur %d · aperçu limité à %d par catégorie."), displayed, total, vaulticDiffPreviewLimit)
 	}
-	return fmt.Sprintf("%d modification(s) affichée(s) sur %d.", displayed, total)
+	return fmt.Sprintf(vaulticT("%d modification(s) affichée(s) sur %d."), displayed, total)
 }
 
 // One virtualized table synchronizes the Before and After columns when scrolling.
 func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotComparison, openForRestore func(snapshotID, filepath string)) {
-	w := app.NewWindow("Vaultic — Avant / Après")
+	w := app.NewWindow(vaulticT("Vaultic — Avant / Après"))
 	w.Resize(fyne.NewSize(1060, 740))
-	heading := vaulticHeading("Comparer les instantanés", 25)
-	before := widget.NewLabelWithStyle("AVANT  ·  "+comparison.SourceID[:min(len(comparison.SourceID), 12)], fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	after := widget.NewLabelWithStyle("APRÈS  ·  "+comparison.TargetID[:min(len(comparison.TargetID), 12)], fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	heading := vaulticHeading(vaulticT("Comparer les instantanés"), 25)
+	before := widget.NewLabelWithStyle(vaulticT("AVANT  ·  ")+comparison.SourceID[:min(len(comparison.SourceID), 12)], fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	after := widget.NewLabelWithStyle(vaulticT("APRÈS  ·  ")+comparison.TargetID[:min(len(comparison.TargetID), 12)], fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	headers := container.NewGridWithColumns(2, vaulticSurfaceRaised(before), vaulticSurfaceRaised(after))
 	stats := container.NewGridWithColumns(3,
-		vaulticStatCard("AJOUTÉS", vaulticHeading(fmt.Sprintf("%d", comparison.AddedChanges), 23)),
-		vaulticStatCard("MODIFIÉS", vaulticHeading(fmt.Sprintf("%d", comparison.ModifiedChanges), 23)),
-		vaulticStatCard("SUPPRIMÉS", vaulticHeading(fmt.Sprintf("%d", comparison.RemovedChanges), 23)),
+		vaulticStatCard(vaulticT("AJOUTÉS"), vaulticHeading(fmt.Sprintf("%d", comparison.AddedChanges), 23)),
+		vaulticStatCard(vaulticT("MODIFIÉS"), vaulticHeading(fmt.Sprintf("%d", comparison.ModifiedChanges), 23)),
+		vaulticStatCard(vaulticT("SUPPRIMÉS"), vaulticHeading(fmt.Sprintf("%d", comparison.RemovedChanges), 23)),
 	)
 	category := widget.NewSelect([]string{vaulticDiffAll, vaulticDiffAdded, vaulticDiffModified, vaulticDiffRemoved}, nil)
 	category.SetSelected(vaulticDiffAll)
 	query := widget.NewEntry()
-	query.SetPlaceHolder("Rechercher un chemin dans l'aperçu…")
+	query.SetPlaceHolder(vaulticT("Rechercher un chemin dans l'aperçu…"))
 	rows := vaulticFilterDiffChanges(comparison.Changes, vaulticDiffAll, "")
-	details := vaulticWrappedLabel("Sélectionnez une ligne pour afficher le type de changement et le chemin.")
-	restoreSelected := widget.NewButtonWithIcon("Ouvrir pour restaurer…", theme.FolderOpenIcon(), nil)
+	details := vaulticWrappedLabel(vaulticT("Sélectionnez une ligne pour afficher le type de changement et le chemin."))
+	restoreSelected := widget.NewButtonWithIcon(vaulticT("Ouvrir pour restaurer…"), theme.FolderOpenIcon(), nil)
 	restoreSelected.Disable()
 	var selected *vaulticDiffRecord
 	restoreSelected.OnTapped = func() {
@@ -197,7 +199,7 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
 		selected = nil
 		restoreSelected.Disable()
 		table.Refresh()
-		details.SetText("Sélectionnez une ligne pour afficher le type de changement et le chemin.")
+		details.SetText(vaulticT("Sélectionnez une ligne pour afficher le type de changement et le chemin."))
 		counter.SetText(vaulticDiffVisibleStatus(comparison, category.Selected, len(rows), query.Text))
 	}
 	category.OnChanged = func(string) { refresh() }
@@ -205,7 +207,7 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
 	content := container.NewBorder(
 		container.NewVBox(
 			heading,
-			vaulticCaption("Deux instantanés comparés par le moteur restic intégré."),
+			vaulticCaption(vaulticT("Deux instantanés comparés par le moteur restic intégré.")),
 			stats,
 			container.NewBorder(nil, nil, category, nil, query),
 			headers,
@@ -214,8 +216,8 @@ func vaulticShowVisualComparison(app fyne.App, comparison vaulticSnapshotCompari
 			details,
 			restoreSelected,
 			counter,
-			vaulticCaption("Lecture seule · la restauration s'effectue dans le navigateur du snapshot après confirmation."),
-			vaulticCaption("Éléments inchangés non affichés · métadonnées seules non comparées"),
+			vaulticCaption(vaulticT("Lecture seule · la restauration s'effectue dans le navigateur du snapshot après confirmation.")),
+			vaulticCaption(vaulticT("Éléments inchangés non affichés · métadonnées seules non comparées")),
 		),
 		nil, nil,
 		vaulticSurface(table),

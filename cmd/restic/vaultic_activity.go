@@ -38,7 +38,7 @@ type vaulticLogView struct {
 func newVaulticLogView() *vaulticLogView {
 	entry := widget.NewMultiLineEntry()
 	entry.SetMinRowsVisible(4)
-	entry.SetPlaceHolder("Aucun événement dans cette session.")
+	entry.SetPlaceHolder(vaulticT("Aucun événement dans cette session."))
 	entry.Wrapping = fyne.TextWrapWord
 	entry.Disable()
 	return &vaulticLogView{Entry: entry}
@@ -71,7 +71,7 @@ type vaulticStatusPanel struct {
 }
 
 func newVaulticStatusPanel(onCancel func()) *vaulticStatusPanel {
-	p := &vaulticStatusPanel{Status: widget.NewLabel("Prêt"), Progress: widget.NewProgressBar()}
+	p := &vaulticStatusPanel{Status: widget.NewLabel(vaulticT("Prêt")), Progress: widget.NewProgressBar()}
 	p.Status.Wrapping = fyne.TextWrapWord
 	p.Progress.Hide()
 	p.placeholder = canvas.NewRectangle(vaulticBackground)
@@ -79,7 +79,7 @@ func newVaulticStatusPanel(onCancel func()) *vaulticStatusPanel {
 	p.placeholder.Hide()
 	p.slot = container.NewStack(p.placeholder, p.Progress)
 	p.slot.Hide()
-	p.Cancel = widget.NewButton("Arrêter", onCancel)
+	p.Cancel = widget.NewButton(vaulticT("Arrêter"), onCancel)
 	p.Cancel.Hide()
 	return p
 }
@@ -142,9 +142,9 @@ func vaulticInterpretEvent(e vaulticEngineEvent, title string, isBackup bool) va
 			view.HasProgress, view.Progress = true, e.PercentDone
 		}
 		if isBackup {
-			files := fmt.Sprintf("%d fichiers", e.FilesDone)
+			files := fmt.Sprintf(vaulticT("%d fichiers"), e.FilesDone)
 			if e.TotalFiles > 0 {
-				files = fmt.Sprintf("%d / %d fichiers", e.FilesDone, e.TotalFiles)
+				files = fmt.Sprintf(vaulticT("%d / %d fichiers"), e.FilesDone, e.TotalFiles)
 			}
 			metrics := files + " · " + vaulticBytes(e.BytesDone)
 			if e.TotalBytes > 0 {
@@ -155,7 +155,7 @@ func vaulticInterpretEvent(e vaulticEngineEvent, title string, isBackup bool) va
 			}
 			view.Status = metrics
 		} else if e.TotalFiles > 0 {
-			view.Status = fmt.Sprintf("%s en cours · %d / %d fichiers", title, e.FilesDone+e.FilesRestored, e.TotalFiles)
+			view.Status = fmt.Sprintf(vaulticT("%s en cours · %d / %d fichiers"), title, e.FilesDone+e.FilesRestored, e.TotalFiles)
 		}
 		view.Suppress = true
 	case "summary":
@@ -164,9 +164,9 @@ func vaulticInterpretEvent(e vaulticEngineEvent, title string, isBackup bool) va
 			return view
 		}
 		if e.SnapshotID != "" {
-			view.Log = fmt.Sprintf("Instantané %s · %d fichier(s) traité(s), %d octets", e.SnapshotID, e.FilesProcessed, e.BytesProcessed)
+			view.Log = fmt.Sprintf(vaulticT("Instantané %s · %d fichier(s) traité(s), %d octets"), e.SnapshotID, e.FilesProcessed, e.BytesProcessed)
 		} else if e.TotalFiles > 0 {
-			view.Log = fmt.Sprintf("%d élément(s) restauré(s) sur %d · %d octets", e.FilesRestored, e.TotalFiles, e.BytesRestored)
+			view.Log = fmt.Sprintf(vaulticT("%d élément(s) restauré(s) sur %d · %d octets"), e.FilesRestored, e.TotalFiles, e.BytesRestored)
 		} else {
 			view.Suppress = true
 		}

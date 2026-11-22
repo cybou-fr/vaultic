@@ -15,7 +15,7 @@ import (
 // instead of replaying an old destination's schedule.
 func vaulticApplySchedule(profiles []vaulticBackupProfile, index int, schedule vaulticSchedule, activeRepository string, now time.Time) ([]vaulticBackupProfile, error) {
 	if index < 0 || index >= len(profiles) {
-		return nil, errors.New("Profil introuvable.")
+		return nil, errors.New(vaulticT("Profil introuvable."))
 	}
 	next := append([]vaulticBackupProfile(nil), profiles...)
 	old := next[index].Schedule
@@ -29,10 +29,10 @@ func vaulticApplySchedule(profiles []vaulticBackupProfile, index int, schedule v
 		schedule.Repository = old.Repository
 	}
 	if schedule.Enabled && schedule.Repository == "" {
-		return nil, errors.New("Sélectionnez un dépôt dans Dépôts avant d'activer la planification.")
+		return nil, errors.New(vaulticT("Sélectionnez un dépôt dans Dépôts avant d'activer la planification."))
 	}
 	if err := vaulticValidateDepot(schedule.Repository); schedule.Enabled && err != nil {
-		return nil, errors.New("Le dépôt de destination est invalide.")
+		return nil, errors.New(vaulticT("Le dépôt de destination est invalide."))
 	}
 	if old != nil && old.Repository == schedule.Repository && old.Kind == schedule.Kind &&
 		old.Enabled == schedule.Enabled && old.EveryHours == schedule.EveryHours &&

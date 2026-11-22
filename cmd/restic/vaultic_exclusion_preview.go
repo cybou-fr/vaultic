@@ -43,14 +43,14 @@ func vaulticPreviewExcludedPaths(ctx context.Context, sources, rules []string) (
 		}
 	}
 	matches := filter.RejectByPattern(rules, func(string, ...interface{}) {})
-	limitReached := errors.New("preview limit reached")
+	limitReached := errors.New(vaulticT("preview limit reached"))
 	for _, source := range sources {
 		err := filepath.WalkDir(source, func(p string, d fs.DirEntry, walkErr error) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			if walkErr != nil {
-				return fmt.Errorf("Lecture de %q : %w", p, walkErr)
+				return fmt.Errorf(vaulticT("Lecture de %q : %w"), p, walkErr)
 			}
 			preview.Scanned++
 			if preview.Scanned > vaulticPreviewMaxEntries {
@@ -85,21 +85,21 @@ func vaulticPreviewExcludedPaths(ctx context.Context, sources, rules []string) (
 
 func vaulticFormatExclusionPreview(result vaulticExclusionPreview) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Éléments parcourus : %d\nCorrespondances détectées : %d\n", result.Scanned, result.Matched)
+	fmt.Fprintf(&b, vaulticT("Éléments parcourus : %d\nCorrespondances détectées : %d\n"), result.Scanned, result.Matched)
 	if len(result.Examples) == 0 {
-		b.WriteString("\nAucun élément correspondant dans les sources parcourues.\n")
+		b.WriteString(vaulticT("\nAucun élément correspondant dans les sources parcourues.\n"))
 	} else {
-		b.WriteString("\nExemples de chemins correspondants :\n")
+		b.WriteString(vaulticT("\nExemples de chemins correspondants :\n"))
 		for _, p := range result.Examples {
 			fmt.Fprintf(&b, "• %s\n", p)
 		}
 		if result.Matched > len(result.Examples) {
-			fmt.Fprintf(&b, "… et %d autre(s)\n", result.Matched-len(result.Examples))
+			fmt.Fprintf(&b, vaulticT("… et %d autre(s)\n"), result.Matched-len(result.Examples))
 		}
 	}
 	if result.Truncated {
-		b.WriteString("\nLimite de parcours atteinte : aperçu partiel.\n")
+		b.WriteString(vaulticT("\nLimite de parcours atteinte : aperçu partiel.\n"))
 	}
-	b.WriteString("\nAperçu indicatif : un dossier exclu compte pour une correspondance, pas pour tous ses fichiers. Les règles de ré-inclusion (!), les permissions et les changements de fichiers peuvent modifier le résultat réel.")
+	b.WriteString(vaulticT("\nAperçu indicatif : un dossier exclu compte pour une correspondance, pas pour tous ses fichiers. Les règles de ré-inclusion (!), les permissions et les changements de fichiers peuvent modifier le résultat réel."))
 	return b.String()
 }

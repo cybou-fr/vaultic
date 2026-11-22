@@ -20,7 +20,7 @@ import (
 
 func vaulticCheckRestoreTree(ctx context.Context, repo restic.BlobLoader, tree *restic.ID, selected func(string, bool) (bool, bool)) error {
 	if tree == nil {
-		return errors.New("Cet instantané n’a pas d’arborescence")
+		return errors.New(vaulticT("Cet instantané n’a pas d’arborescence"))
 	}
 	names := make(map[string]map[string]bool)
 	return walker.Walk(ctx, repo, *tree, walker.WalkVisitor{
@@ -37,10 +37,10 @@ func vaulticCheckRestoreTree(ctx context.Context, repo restic.BlobLoader, tree *
 				return nil
 			}
 			if !vaulticSafeRestoreName(node.Name) {
-				return fmt.Errorf("Nom incompatible avec une restauration sûre : %q", node.Name)
+				return fmt.Errorf(vaulticT("Nom incompatible avec une restauration sûre : %q"), node.Name)
 			}
 			if !isDir && node.Type != data.NodeTypeFile {
-				return fmt.Errorf("Seuls les fichiers ordinaires et les dossiers peuvent être restaurés : %q", location)
+				return fmt.Errorf(vaulticT("Seuls les fichiers ordinaires et les dossiers peuvent être restaurés : %q"), location)
 			}
 			parent := path.Dir(location)
 			key := node.Name
@@ -51,7 +51,7 @@ func vaulticCheckRestoreTree(ctx context.Context, repo restic.BlobLoader, tree *
 				names[parent] = make(map[string]bool)
 			}
 			if names[parent][key] {
-				return fmt.Errorf("Deux éléments utilisent le même nom de destination : %q", location)
+				return fmt.Errorf(vaulticT("Deux éléments utilisent le même nom de destination : %q"), location)
 			}
 			names[parent][key] = true
 			return nil
@@ -92,7 +92,7 @@ func vaulticRedactor(secrets []string) func(string) string {
 	var replacements []string
 	for _, secret := range secrets {
 		if secret != "" {
-			replacements = append(replacements, secret, "[masqué]")
+			replacements = append(replacements, secret, vaulticT("[masqué]"))
 		}
 	}
 	redactor := strings.NewReplacer(replacements...)
@@ -100,7 +100,7 @@ func vaulticRedactor(secrets []string) func(string) string {
 		return vaulticLogURL.ReplaceAllStringFunc(redactor.Replace(message), func(raw string) string {
 			parsed, err := url.Parse(raw)
 			if err != nil {
-				return "[adresse masquée]"
+				return vaulticT("[adresse masquée]")
 			}
 			parsed.User = nil
 			parsed.RawQuery, parsed.Fragment, parsed.RawFragment = "", "", ""

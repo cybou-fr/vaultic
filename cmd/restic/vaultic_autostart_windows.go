@@ -22,7 +22,9 @@ func newVaulticSystemAutostart() vaulticAutostart {
 	return vaulticRegistryAutostart{value: vaulticRunValue}
 }
 
-func (vaulticRegistryAutostart) Name() string { return "Applications de démarrage de Windows" }
+func (vaulticRegistryAutostart) Name() string {
+	return vaulticT("Applications de démarrage de Windows")
+}
 
 func (a vaulticRegistryAutostart) Enabled() (bool, error) {
 	key, err := registry.OpenKey(registry.CURRENT_USER, vaulticRunKeyPath, registry.QUERY_VALUE)
@@ -55,7 +57,7 @@ func (a vaulticRegistryAutostart) Set(enabled bool, executable string) error {
 		return nil
 	}
 	if executable == "" {
-		return errors.New("chemin de l'exécutable inconnu")
+		return errors.New(vaulticT("chemin de l'exécutable inconnu"))
 	}
 	return key.SetStringValue(a.value, vaulticAutostartCommand(executable))
 }

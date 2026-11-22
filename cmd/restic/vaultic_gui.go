@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -101,7 +102,7 @@ func vaulticContained(parent, child string) bool {
 
 func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
 	if len(sources) == 0 {
-		return nil, errors.New("Sélectionnez au moins un dossier ou fichier")
+		return nil, errors.New(vaulticT("Sélectionnez au moins un dossier ou fichier"))
 	}
 	cleaned := make([]string, 0, len(sources))
 	localRepo := vaulticLocalRepository(repo)
@@ -123,19 +124,19 @@ func vaulticSourcesForBackup(repo string, sources []string) ([]string, error) {
 		}
 		info, err := os.Lstat(abs)
 		if err != nil {
-			return nil, fmt.Errorf("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w", abs, err)
+			return nil, fmt.Errorf(vaulticT("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w"), abs, err)
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("Choisissez directement un fichier ou un dossier ordinaire : %s", abs)
+			return nil, fmt.Errorf(vaulticT("Choisissez directement un fichier ou un dossier ordinaire : %s"), abs)
 		}
 		if real, e := filepath.EvalSymlinks(abs); e == nil {
 			abs = real
 		}
 		if _, err := os.Stat(abs); err != nil {
-			return nil, fmt.Errorf("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w", abs, err)
+			return nil, fmt.Errorf(vaulticT("Source inaccessible : %s\nVérifiez le chemin, les permissions et le branchement du disque.\n%w"), abs, err)
 		}
 		if localRepo && vaulticContained(abs, repoAbs) {
-			return nil, fmt.Errorf("Le dépôt %q ne doit pas se trouver dans une source sauvegardée (%q)", repoAbs, abs)
+			return nil, fmt.Errorf(vaulticT("Le dépôt %q ne doit pas se trouver dans une source sauvegardée (%q)"), repoAbs, abs)
 		}
 		cleaned = append(cleaned, abs)
 	}
@@ -146,7 +147,7 @@ var vaulticSnapshotID = regexp.MustCompile(`^[a-fA-F0-9]{8,64}$`)
 
 func vaulticRestoreTarget(target string) (string, error) {
 	if target == "" {
-		return "", errors.New("Choisissez un dossier de restauration")
+		return "", errors.New(vaulticT("Choisissez un dossier de restauration"))
 	}
 	abs, err := filepath.Abs(target)
 	if err != nil {
@@ -154,10 +155,10 @@ func vaulticRestoreTarget(target string) (string, error) {
 	}
 	info, err := os.Lstat(abs)
 	if err != nil {
-		return "", fmt.Errorf("Dossier de restauration inaccessible : %w", err)
+		return "", fmt.Errorf(vaulticT("Dossier de restauration inaccessible : %w"), err)
 	}
 	if !info.IsDir() || info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
-		return "", errors.New("Choisissez un dossier de restauration qui n’est pas un lien")
+		return "", errors.New(vaulticT("Choisissez un dossier de restauration qui n’est pas un lien"))
 	}
 	canonical, err := filepath.EvalSymlinks(abs)
 	if err != nil {
@@ -165,10 +166,10 @@ func vaulticRestoreTarget(target string) (string, error) {
 	}
 	entries, err := os.ReadDir(canonical)
 	if err != nil {
-		return "", fmt.Errorf("Choisissez un dossier de restauration existant et vide : %w", err)
+		return "", fmt.Errorf(vaulticT("Choisissez un dossier de restauration existant et vide : %w"), err)
 	}
 	if len(entries) > 0 {
-		return "", errors.New("Pour éviter tout écrasement, choisissez un dossier de restauration vide")
+		return "", errors.New(vaulticT("Pour éviter tout écrasement, choisissez un dossier de restauration vide"))
 	}
 	return canonical, nil
 }
@@ -177,16 +178,20 @@ func vaulticMain(startHidden bool) {
 	a := app.NewWithID("fr.cybou.vaultic")
 	a.SetIcon(vaulticAppIcon())
 	a.Settings().SetTheme(&vaulticVisualTheme{})
-	w := a.NewWindow("Vaultic — sauvegardes chiffrées")
+	w := a.NewWindow(vaulticT("Vaultic — sauvegardes chiffrées"))
 	w.SetMaster()
 
 	saved, settingsErr := vaulticLoadSettings()
+	// Choose the language before any text is built.
+	vaulticSetLanguage(vaulticResolveLanguage(saved.Language, string(lang.SystemLocale())))
+	vaulticLocalizeTables()
+	w.SetTitle(vaulticT("Vaultic — sauvegardes chiffrées"))
 	initialProfile := saved.migrateBackupProfiles()
 	vaulticPrepareLoadedSettings(&saved)
 	var snapshots *vaulticSnapshotsController
 	var profiles *vaulticProfilesController
 	var retention *vaulticRetentionController
-	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	recentRunValue := widget.NewLabelWithStyle(vaulticT("Aucune"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	recentRunValue.Truncation = fyne.TextTruncateEllipsis
 	var maintenance *vaulticMaintenanceController
 
@@ -205,7 +210,7 @@ func vaulticMain(startHidden bool) {
 	}
 	save := func() {
 		if err := persist(saved.Depots, repos.Active()); err != nil {
-			appendLog("Erreur d'enregistrement des préférences : " + err.Error())
+			appendLog(vaulticT("Erreur d'enregistrement des préférences : ") + err.Error())
 		}
 	}
 
@@ -311,7 +316,7 @@ func vaulticMain(startHidden bool) {
 		},
 		Renamed: func(oldName, newName string) {
 			if err := historyStore.RenameProfile(oldName, newName); err != nil {
-				appendLog("Historique : " + err.Error())
+				appendLog(vaulticT("Historique : ") + err.Error())
 			}
 			if automationUI != nil {
 				automationUI.Refresh()
@@ -385,11 +390,11 @@ func vaulticMain(startHidden bool) {
 	}
 	// Every page has one purpose. Operations still invoke the original Go
 	// restic engine; this shell only changes presentation and navigation.
-	startBackup := widget.NewButtonWithIcon("Préparer une sauvegarde", theme.MediaPlayIcon(), nil)
+	startBackup := widget.NewButtonWithIcon(vaulticT("Préparer une sauvegarde"), theme.MediaPlayIcon(), nil)
 	startBackup.Importance = widget.HighImportance
-	setupButton := widget.NewButtonWithIcon("Configurer le dépôt", theme.SettingsIcon(), nil)
-	viewSnapshots := widget.NewButtonWithIcon("Voir les instantanés", theme.HistoryIcon(), nil)
-	viewStorage := widget.NewButtonWithIcon("Espace de stockage", theme.StorageIcon(), nil)
+	setupButton := widget.NewButtonWithIcon(vaulticT("Configurer le dépôt"), theme.SettingsIcon(), nil)
+	viewSnapshots := widget.NewButtonWithIcon(vaulticT("Voir les instantanés"), theme.HistoryIcon(), nil)
+	viewStorage := widget.NewButtonWithIcon(vaulticT("Espace de stockage"), theme.StorageIcon(), nil)
 	overviewPage := vaulticOverviewPage(vaulticOverviewParts{
 		SourceCount: profiles.CountValue, SnapshotCount: snapshots.CountValue, Repository: repos.Value,
 		RecentRun: recentRunValue, RecentSnapshot: snapshots.RecentValue,
@@ -409,9 +414,9 @@ func vaulticMain(startHidden bool) {
 				return err
 			}
 			if !profiles.Apply(next, profiles.Index()) {
-				return errors.New("Enregistrement impossible : consultez le message affiché.")
+				return errors.New(vaulticT("Enregistrement impossible : consultez le message affiché."))
 			}
-			appendLog("Planification du profil « " + next[profiles.Index()].Name + " » : " + schedule.Describe())
+			appendLog(vaulticT("Planification du profil « ") + next[profiles.Index()].Name + " » : " + schedule.Describe())
 			return nil
 		},
 		Paused: func() bool { return saved.SchedulerPaused },
@@ -421,16 +426,16 @@ func vaulticMain(startHidden bool) {
 				backup.Coord.Resume()
 			} // nothing missed during a pause is made up afterwards
 			if err := persist(saved.Depots, repos.Active()); err != nil {
-				appendLog("Erreur d'enregistrement des préférences : " + err.Error())
+				appendLog(vaulticT("Erreur d'enregistrement des préférences : ") + err.Error())
 			}
-			appendLog(map[bool]string{true: "Planification mise en pause.", false: "Planification reprise."}[paused])
+			appendLog(map[bool]string{true: vaulticT("Planification mise en pause."), false: vaulticT("Planification reprise.")}[paused])
 		},
 		Notify: func() vaulticNotifyPrefs { return *notifyPrefs.Load() },
 		SetNotify: func(prefs vaulticNotifyPrefs) {
 			notifyPrefs.Store(&prefs)
 			saved.Notifications = &prefs
 			if err := persist(saved.Depots, repos.Active()); err != nil {
-				appendLog("Erreur d'enregistrement des préférences : " + err.Error())
+				appendLog(vaulticT("Erreur d'enregistrement des préférences : ") + err.Error())
 			}
 		},
 		Coordinator: backup.Coord, History: historyStore, Now: time.Now,
@@ -445,7 +450,7 @@ func vaulticMain(startHidden bool) {
 			next := append([]vaulticBackupProfile(nil), saved.Profiles...)
 			next[profiles.Index()].Retention = &policy
 			if !profiles.Apply(next, profiles.Index()) {
-				return errors.New("Enregistrement impossible : consultez le message affiché.")
+				return errors.New(vaulticT("Enregistrement impossible : consultez le message affiché."))
 			}
 			return nil
 		},
@@ -485,7 +490,11 @@ func vaulticMain(startHidden bool) {
 		TrayAvailable: trayOK,
 		Log:           appendLog,
 	})
-	settingsPage := vaulticSettingsPage(background.Content)
+	languageUI := newVaulticLanguageController(vaulticLanguageHooks{
+		Window: w, Settings: &saved,
+		Persist: func() error { return persist(saved.Depots, repos.Active()) },
+	})
+	settingsPage := vaulticSettingsPage(background.Content, languageUI.Content)
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
 	stopFocusFollow = vaulticKeepFocusVisible(w, append([]*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage}, backupScrolls...))
@@ -525,8 +534,8 @@ func vaulticMain(startHidden bool) {
 			w.Hide()
 			if !trayNoticeShown {
 				trayNoticeShown = true
-				a.SendNotification(&fyne.Notification{Title: "Vaultic continue en arrière-plan",
-					Content: "Les sauvegardes planifiées restent actives. Pour quitter : clic droit sur l'icône, « Quitter Vaultic »."})
+				a.SendNotification(&fyne.Notification{Title: vaulticT("Vaultic continue en arrière-plan"),
+					Content: vaulticT("Les sauvegardes planifiées restent actives. Pour quitter : clic droit sur l'icône, « Quitter Vaultic ».")})
 			}
 			return true
 		},
@@ -547,7 +556,7 @@ func vaulticMain(startHidden bool) {
 		reveal()
 	}
 	if settingsErr != nil {
-		dialog.ShowError(fmt.Errorf("Enregistrement des préférences désactivé pour cette session : %w", settingsErr), w)
+		dialog.ShowError(fmt.Errorf(vaulticT("Enregistrement des préférences désactivé pour cette session : %w"), settingsErr), w)
 	}
 	a.Run()
 }

@@ -13,7 +13,7 @@ import (
 func vaulticValidateSavedName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || utf8.RuneCountInString(name) > 40 || strings.ContainsAny(name, "\r\n\x00") {
-		return "", errors.New("Indiquez un nom de 1 à 40 caractères, sur une seule ligne.")
+		return "", errors.New(vaulticT("Indiquez un nom de 1 à 40 caractères, sur une seule ligne."))
 	}
 	return name, nil
 }
@@ -29,11 +29,11 @@ func vaulticRenameSavedDepot(depots []vaulticDepot, location, name string) ([]va
 			index = i
 		}
 		if depot.Location != location && strings.EqualFold(strings.TrimSpace(depot.Name), label) {
-			return nil, errors.New("Ce nom de dépôt est déjà utilisé.")
+			return nil, errors.New(vaulticT("Ce nom de dépôt est déjà utilisé."))
 		}
 	}
 	if index < 0 {
-		return nil, errors.New("Le dépôt n'est plus enregistré.")
+		return nil, errors.New(vaulticT("Le dépôt n'est plus enregistré."))
 	}
 	out := append([]vaulticDepot(nil), depots...)
 	out[index].Name = label
@@ -49,7 +49,7 @@ func vaulticForgetSavedDepot(depots []vaulticDepot, active, location string) ([]
 		}
 	}
 	if index < 0 {
-		return nil, active, errors.New("Le dépôt n'est plus enregistré.")
+		return nil, active, errors.New(vaulticT("Le dépôt n'est plus enregistré."))
 	}
 	out := append([]vaulticDepot(nil), depots[:index]...)
 	out = append(out, depots[index+1:]...)
@@ -64,7 +64,7 @@ func vaulticForgetSavedDepot(depots []vaulticDepot, active, location string) ([]
 
 func vaulticDuplicateSavedProfile(profiles []vaulticBackupProfile, index int, name string) ([]vaulticBackupProfile, int, error) {
 	if index < 0 || index >= len(profiles) {
-		return nil, 0, errors.New("Le profil n'existe plus.")
+		return nil, 0, errors.New(vaulticT("Le profil n'existe plus."))
 	}
 	label, err := vaulticValidateSavedName(name)
 	if err != nil {
@@ -72,7 +72,7 @@ func vaulticDuplicateSavedProfile(profiles []vaulticBackupProfile, index int, na
 	}
 	for _, p := range profiles {
 		if strings.EqualFold(strings.TrimSpace(p.Name), label) {
-			return nil, 0, fmt.Errorf("Le profil %q existe déjà.", label)
+			return nil, 0, fmt.Errorf(vaulticT("Le profil %q existe déjà."), label)
 		}
 	}
 	original := profiles[index]
@@ -87,10 +87,10 @@ func vaulticDuplicateSavedProfile(profiles []vaulticBackupProfile, index int, na
 
 func vaulticDeleteSavedProfile(profiles []vaulticBackupProfile, index int) ([]vaulticBackupProfile, int, error) {
 	if len(profiles) <= 1 {
-		return nil, 0, errors.New("Il faut conserver au moins un profil de sauvegarde.")
+		return nil, 0, errors.New(vaulticT("Il faut conserver au moins un profil de sauvegarde."))
 	}
 	if index < 0 || index >= len(profiles) {
-		return nil, 0, errors.New("Le profil n'existe plus.")
+		return nil, 0, errors.New(vaulticT("Le profil n'existe plus."))
 	}
 	out := append([]vaulticBackupProfile(nil), profiles[:index]...)
 	out = append(out, profiles[index+1:]...)
@@ -103,13 +103,13 @@ func vaulticDeleteSavedProfile(profiles []vaulticBackupProfile, index int) ([]va
 
 func vaulticSuggestedCopyName(profiles []vaulticBackupProfile, index int) string {
 	if index < 0 || index >= len(profiles) {
-		return "Copie"
+		return vaulticT("Copie")
 	}
-	base := "Copie de " + profiles[index].Name
+	base := vaulticT("Copie de ") + profiles[index].Name
 	for suffix := 1; suffix < 10000; suffix++ {
 		tail := ""
 		if suffix > 1 {
-			tail = fmt.Sprintf(" (%d)", suffix)
+			tail = fmt.Sprintf(vaulticT(" (%d)"), suffix)
 		}
 		runes := []rune(base)
 		if len(runes) > 40-utf8.RuneCountInString(tail) {
@@ -127,7 +127,7 @@ func vaulticSuggestedCopyName(profiles []vaulticBackupProfile, index int) string
 			return candidate
 		}
 	}
-	return "Copie"
+	return vaulticT("Copie")
 }
 
 // vaulticRecordVerification stores the outcome of the latest connection test.
@@ -158,7 +158,7 @@ func vaulticSetRememberPassword(depots []vaulticDepot, location string, on bool)
 func vaulticVerificationSummary(depot vaulticDepot) string {
 	at, err := time.Parse(time.RFC3339, depot.LastVerified)
 	if err != nil {
-		return "Jamais vérifié"
+		return vaulticT("Jamais vérifié")
 	}
 	return vaulticConnStateFromKey(depot.LastVerifiedState).Label() + " · " + at.Local().Format("02/01/2006 15:04")
 }
@@ -180,14 +180,14 @@ func vaulticEditSavedDepot(depots []vaulticDepot, oldLocation, name, newLocation
 			continue
 		}
 		if strings.EqualFold(strings.TrimSpace(depot.Name), label) {
-			return nil, errors.New("Ce nom de dépôt est déjà utilisé.")
+			return nil, errors.New(vaulticT("Ce nom de dépôt est déjà utilisé."))
 		}
 		if vaulticResolvedRepository(depot.Location) == vaulticResolvedRepository(newLocation) {
-			return nil, errors.New("Cet emplacement est déjà enregistré.")
+			return nil, errors.New(vaulticT("Cet emplacement est déjà enregistré."))
 		}
 	}
 	if index < 0 {
-		return nil, errors.New("Le dépôt n'est plus enregistré.")
+		return nil, errors.New(vaulticT("Le dépôt n'est plus enregistré."))
 	}
 	out := append([]vaulticDepot(nil), depots...)
 	out[index].Name = label

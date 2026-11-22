@@ -105,27 +105,27 @@ type vaulticRepositoriesController struct {
 
 func newVaulticRepositoriesController(settings *vaulticSettings, hooks vaulticRepositoriesHooks) *vaulticRepositoriesController {
 	c := &vaulticRepositoriesController{hooks: hooks, settings: settings, active: settings.Repository, Sessions: &vaulticCloudSessions{}}
-	c.Value = widget.NewLabel("Aucun dépôt configuré")
+	c.Value = widget.NewLabel(vaulticT("Aucun dépôt configuré"))
 	c.Value.Wrapping = fyne.TextWrapWord
 	c.updateLabel()
 	c.Password = widget.NewPasswordEntry()
-	c.Password.SetPlaceHolder("Mot de passe du dépôt — jamais enregistré dans Vaultic")
+	c.Password.SetPlaceHolder(vaulticT("Mot de passe du dépôt — jamais enregistré dans Vaultic"))
 	c.secrets = hooks.Secrets
 	if c.secrets == nil {
 		c.secrets = newVaulticSystemSecretStore()
 	}
-	c.Remember = widget.NewCheck("Mémoriser le mot de passe sur cet ordinateur ("+c.secrets.Name()+")", c.onRememberChanged)
+	c.Remember = widget.NewCheck(vaulticT("Mémoriser le mot de passe sur cet ordinateur (")+c.secrets.Name()+")", c.onRememberChanged)
 	c.ListBox = container.NewVBox()
 
-	c.Verify = widget.NewButton("Vérifier la connexion", func() { c.Test(c.active, c.Password.Text, false) })
-	c.EditAuth = widget.NewButtonWithIcon("Configurer l'accès du dépôt…", theme.SettingsIcon(), c.editSessionAuth)
-	c.ClearAuth = widget.NewButtonWithIcon("Effacer les identifiants de la session", theme.DeleteIcon(), func() {
+	c.Verify = widget.NewButton(vaulticT("Vérifier la connexion"), func() { c.Test(c.active, c.Password.Text, false) })
+	c.EditAuth = widget.NewButtonWithIcon(vaulticT("Configurer l'accès du dépôt…"), theme.SettingsIcon(), c.editSessionAuth)
+	c.ClearAuth = widget.NewButtonWithIcon(vaulticT("Effacer les identifiants de la session"), theme.DeleteIcon(), func() {
 		if c.active == "" || hooks.Busy() {
 			return
 		}
 		c.Sessions.forget(c.active)
 		hooks.UpdateActions()
-		dialog.ShowInformation("Identifiants effacés", "Les identifiants en mémoire ont été effacés pour ce dépôt. Les données restic et la configuration système ne sont pas modifiées.", hooks.Window)
+		dialog.ShowInformation(vaulticT("Identifiants effacés"), vaulticT("Les identifiants en mémoire ont été effacés pour ce dépôt. Les données restic et la configuration système ne sont pas modifiées."), hooks.Window)
 	})
 	c.repoHooks = vaulticRepositoryHooks{Connect: c.connectSaved, Edit: c.edit, Test: c.testSaved, Forget: c.forget}
 	c.Setup = vaulticNewStorageSetupUI(vaulticStorageSetupHooks{
@@ -166,7 +166,7 @@ func (c *vaulticRepositoriesController) updateLabel() {
 	if value := strings.TrimSpace(c.active); value != "" {
 		c.Value.SetText(value)
 	} else {
-		c.Value.SetText("Aucun dépôt configuré")
+		c.Value.SetText(vaulticT("Aucun dépôt configuré"))
 	}
 }
 
@@ -227,7 +227,7 @@ func (c *vaulticRepositoriesController) Refresh() {
 		c.rowButtons = append(c.rowButtons, buttons...)
 	}
 	if len(rows) == 0 {
-		rows = append(rows, vaulticWrappedLabel("Aucun dépôt enregistré. Ajoutez-en un ci-dessous."))
+		rows = append(rows, vaulticWrappedLabel(vaulticT("Aucun dépôt enregistré. Ajoutez-en un ci-dessous.")))
 	}
 	c.ListBox.Objects = rows
 	c.ListBox.Refresh()
@@ -247,7 +247,7 @@ func (c *vaulticRepositoriesController) recordProbe(location string, res vaultic
 	}
 	next := vaulticRecordVerification(c.settings.Depots, depot.Location, res.State, time.Now())
 	if err := c.hooks.Persist(next, c.active); err != nil {
-		c.hooks.Log("Erreur d'enregistrement des préférences : " + err.Error())
+		c.hooks.Log(vaulticT("Erreur d'enregistrement des préférences : ") + err.Error())
 		return
 	}
 	c.settings.Depots = next
@@ -269,7 +269,7 @@ func (c *vaulticRepositoriesController) Test(location, password string, fromForm
 	if fromForm {
 		c.Setup.SetState(vaulticProbeResult{State: vaulticConnTesting})
 	}
-	c.hooks.Run("Test de la connexion", location, password, vaulticRunOptions{AllowNoPassword: true, Inline: true}, func(ctx context.Context, g global.Options) error {
+	c.hooks.Run(vaulticT("Test de la connexion"), location, password, vaulticRunOptions{AllowNoPassword: true, Inline: true}, func(ctx context.Context, g global.Options) error {
 		res := c.probe(ctx, g, location)
 		if _, known := c.savedDepot(location); !known {
 			c.Sessions.forget(location)
@@ -294,12 +294,12 @@ func (c *vaulticRepositoriesController) connectNew(setup vaulticStorageSetup, cr
 	w := c.hooks.Window
 	name, address := setup.Name, vaulticNormalizeAddress(setup.Address)
 	if _, exists := c.savedDepot(address); exists {
-		dialog.ShowInformation("Dépôt déjà enregistré", "Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré.", w)
+		dialog.ShowInformation(vaulticT("Dépôt déjà enregistré"), vaulticT("Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré."), w)
 		return
 	}
 	for _, depot := range c.settings.Depots {
 		if strings.EqualFold(depot.Name, name) {
-			dialog.ShowInformation("Dépôt déjà enregistré", "Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré.", w)
+			dialog.ShowInformation(vaulticT("Dépôt déjà enregistré"), vaulticT("Utilisez un nom et un emplacement différents, ou sélectionnez le dépôt enregistré."), w)
 			return
 		}
 	}
@@ -310,9 +310,9 @@ func (c *vaulticRepositoriesController) connectNew(setup vaulticStorageSetup, cr
 		}
 	}
 	password := setup.Password
-	title := "Connexion au dépôt"
+	title := vaulticT("Connexion au dépôt")
 	if create {
-		title = "Création du dépôt"
+		title = vaulticT("Création du dépôt")
 	}
 	c.Setup.SetState(vaulticProbeResult{State: vaulticConnTesting})
 	var outcome vaulticProbeResult
@@ -332,7 +332,7 @@ func (c *vaulticRepositoriesController) connectNew(setup vaulticStorageSetup, cr
 			}
 			outcome = vaulticClassifyProbe(err, true)
 			if err == nil {
-				outcome.Detail = "Nouveau dépôt créé et ouvert."
+				outcome.Detail = vaulticT("Nouveau dépôt créé et ouvert.")
 			}
 		} else {
 			outcome = c.probe(ctx, g, address)
@@ -401,7 +401,7 @@ func (c *vaulticRepositoriesController) saveEdited(setup vaulticStorageSetup) {
 	c.editing = ""
 	c.Setup.Reset()
 	c.Refresh()
-	c.hooks.Log("Dépôt modifié dans Vaultic : " + setup.Name + " (aucune donnée distante modifiée).")
+	c.hooks.Log(vaulticT("Dépôt modifié dans Vaultic : ") + setup.Name + vaulticT(" (aucune donnée distante modifiée)."))
 }
 
 func (c *vaulticRepositoriesController) submit(setup vaulticStorageSetup, action string) {
@@ -431,10 +431,10 @@ func (c *vaulticRepositoriesController) showCloudWizard(scheme string) {
 	}
 	vaulticShowCloudWizard(c.hooks.Window, scheme, func(setup vaulticCloudSetup, create bool) error {
 		if c.hooks.Busy() {
-			return errors.New("Une opération est déjà en cours.")
+			return errors.New(vaulticT("Une opération est déjà en cours."))
 		}
 		if _, exists := c.savedDepot(setup.Address); exists {
-			return errors.New("Ce nom ou emplacement est déjà enregistré dans Vaultic.")
+			return errors.New(vaulticT("Ce nom ou emplacement est déjà enregistré dans Vaultic."))
 		}
 		c.connectNew(vaulticStorageSetup{Name: setup.Name, Address: setup.Address, Password: setup.Password, Auth: setup.Auth}, create)
 		return nil
@@ -452,7 +452,7 @@ func (c *vaulticRepositoriesController) editSessionAuth() {
 	}
 	vaulticShowCloudSessionWizard(w, info.Scheme, func(auth vaulticCloudAuth) error {
 		if c.hooks.Busy() {
-			return errors.New("Une opération est déjà en cours.")
+			return errors.New(vaulticT("Une opération est déjà en cours."))
 		}
 		if err := c.Sessions.set(c.active, auth); err != nil {
 			return err
@@ -461,7 +461,7 @@ func (c *vaulticRepositoriesController) editSessionAuth() {
 		if c.Password.Text != "" {
 			c.Test(c.active, c.Password.Text, false)
 		} else {
-			dialog.ShowInformation("Mot de passe requis", "Identifiants configurés pour cette session. Saisissez le mot de passe restic du dépôt puis utilisez « Vérifier la connexion ».", w)
+			dialog.ShowInformation(vaulticT("Mot de passe requis"), vaulticT("Identifiants configurés pour cette session. Saisissez le mot de passe restic du dépôt puis utilisez « Vérifier la connexion »."), w)
 		}
 		return nil
 	})
@@ -483,7 +483,7 @@ func (c *vaulticRepositoriesController) connectSaved(depot vaulticDepot) {
 		c.Activate(depot.Location, "")
 	}
 	c.Refresh()
-	c.hooks.Status("Dépôt « " + depot.Name + " » sélectionné — saisissez son mot de passe puis vérifiez la connexion.")
+	c.hooks.Status(vaulticT("Dépôt « ") + depot.Name + vaulticT(" » sélectionné — saisissez son mot de passe puis vérifiez la connexion."))
 	c.hooks.Window.Canvas().Focus(c.Password)
 }
 
@@ -512,8 +512,8 @@ func (c *vaulticRepositoriesController) testSaved(depot vaulticDepot) {
 func (c *vaulticRepositoriesController) forget(depot vaulticDepot) {
 	w := c.hooks.Window
 	location, name := depot.Location, depot.Name
-	dialog.ShowConfirm("Oublier le dépôt",
-		"Retirer « "+name+" » de la liste Vaultic ?\n\nAucun fichier de sauvegarde ni instantané ne sera supprimé, ni localement ni à distance. Vous pourrez reconnecter le dépôt plus tard.",
+	dialog.ShowConfirm(vaulticT("Oublier le dépôt"),
+		vaulticT("Retirer « ")+name+vaulticT(" » de la liste Vaultic ?\n\nAucun fichier de sauvegarde ni instantané ne sera supprimé, ni localement ni à distance. Vous pourrez reconnecter le dépôt plus tard."),
 		func(ok bool) {
 			if !ok || c.hooks.Busy() {
 				return
@@ -531,7 +531,7 @@ func (c *vaulticRepositoriesController) forget(depot vaulticDepot) {
 			c.Sessions.forget(location)
 			if depot.RememberPassword {
 				if err := c.secrets.Delete(vaulticSecretKey(location)); err != nil {
-					c.hooks.Log("Mot de passe mémorisé non effacé : " + err.Error())
+					c.hooks.Log(vaulticT("Mot de passe mémorisé non effacé : ") + err.Error())
 				}
 			}
 			if c.active == location {
@@ -542,6 +542,6 @@ func (c *vaulticRepositoriesController) forget(depot vaulticDepot) {
 				c.Setup.Reset()
 			}
 			c.Refresh()
-			c.hooks.Log("Dépôt retiré de la liste Vaultic : " + name + " (sauvegardes non supprimées).")
+			c.hooks.Log(vaulticT("Dépôt retiré de la liste Vaultic : ") + name + vaulticT(" (sauvegardes non supprimées)."))
 		}, w)
 }

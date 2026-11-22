@@ -58,12 +58,12 @@ func vaulticGuidedStoragePrefix(raw string) (string, error) {
 	}
 	p = strings.Trim(p, "/")
 	if strings.Contains(p, "\\") {
-		return "", errors.New("Utilisez des barres obliques dans le chemin distant.")
+		return "", errors.New(vaulticT("Utilisez des barres obliques dans le chemin distant."))
 	}
 	if p != "" {
 		for _, segment := range strings.Split(p, "/") {
 			if segment == "" || segment == "." || segment == ".." {
-				return "", errors.New("Chemin distant invalide.")
+				return "", errors.New(vaulticT("Chemin distant invalide."))
 			}
 		}
 	}
@@ -76,7 +76,7 @@ func vaulticGuidedBucket(raw string) (string, error) {
 		return "", err
 	}
 	if bucket == "" || strings.HasPrefix(bucket, "-") || strings.ContainsAny(bucket, ":/@\\ \t") {
-		return "", errors.New("Indiquez un bucket ou conteneur valide, sans espace ni barre oblique.")
+		return "", errors.New(vaulticT("Indiquez un bucket ou conteneur valide, sans espace ni barre oblique."))
 	}
 	return bucket, nil
 }
@@ -91,12 +91,12 @@ func vaulticGuidedHost(raw string) (host string, bracketed bool, err error) {
 	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
 		ip := net.ParseIP(host[1 : len(host)-1])
 		if ip == nil || ip.To4() != nil {
-			return "", false, errors.New("Adresse IPv6 invalide.")
+			return "", false, errors.New(vaulticT("Adresse IPv6 invalide."))
 		}
 		return host, true, nil
 	}
 	if !sftpHostRe.MatchString(host) {
-		return "", false, errors.New("Nom d'hôte invalide (lettres, chiffres, point et tiret uniquement).")
+		return "", false, errors.New(vaulticT("Nom d'hôte invalide (lettres, chiffres, point et tiret uniquement)."))
 	}
 	return host, false, nil
 }
@@ -108,7 +108,7 @@ func vaulticGuidedPort(raw string) (string, error) {
 	}
 	n, convErr := strconv.Atoi(port)
 	if convErr != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
-		return "", errors.New("Port SSH invalide (1 à 65535).")
+		return "", errors.New(vaulticT("Port SSH invalide (1 à 65535)."))
 	}
 	return port, nil
 }
@@ -119,11 +119,11 @@ func vaulticGuidedSFTPPath(raw string) (string, error) {
 		return "", err
 	}
 	if p == "" || p == "/" || strings.Contains(p, "\\") || strings.HasPrefix(p, "~") {
-		return "", errors.New("Indiquez un dossier distant (absolu ou relatif au répertoire personnel, sans ~).")
+		return "", errors.New(vaulticT("Indiquez un dossier distant (absolu ou relatif au répertoire personnel, sans ~)."))
 	}
 	for _, segment := range strings.Split(strings.TrimPrefix(p, "/"), "/") {
 		if segment == ".." {
-			return "", errors.New("Chemin distant invalide.")
+			return "", errors.New(vaulticT("Chemin distant invalide."))
 		}
 	}
 	return p, nil
@@ -137,19 +137,19 @@ func vaulticGuidedRESTURL(raw string) (*url.URL, error) {
 		return nil, err
 	}
 	u, err := url.Parse(raw)
-	bad := errors.New("Indiquez une URL HTTPS sans identifiants ni paramètres.")
+	bad := errors.New(vaulticT("Indiquez une URL HTTPS sans identifiants ni paramètres."))
 	if err != nil || u == nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || strings.Contains(raw, "@") {
 		return nil, bad
 	}
 	if strings.ContainsAny(raw, " 	\\") || vaulticCheckHTTPHost(u) != nil {
-		return nil, errors.New("Hôte, port ou caractères de l'URL invalides.")
+		return nil, errors.New(vaulticT("Hôte, port ou caractères de l'URL invalides."))
 	}
 	switch u.Scheme {
 	case "https":
 	case "http":
 		ip := net.ParseIP(u.Hostname())
 		if u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return nil, errors.New("HTTP n'est autorisé que vers localhost ; utilisez HTTPS pour un serveur distant.")
+			return nil, errors.New(vaulticT("HTTP n'est autorisé que vers localhost ; utilisez HTTPS pour un serveur distant."))
 		}
 	default:
 		return nil, bad
@@ -163,7 +163,7 @@ func vaulticGuidedRemote(raw string) (string, error) {
 		return "", err
 	}
 	if !rcloneRemoteRe.MatchString(remote) {
-		return "", errors.New("Nom de remote rclone invalide (lettres, chiffres, _ . + -).")
+		return "", errors.New(vaulticT("Nom de remote rclone invalide (lettres, chiffres, _ . + -)."))
 	}
 	return remote, nil
 }
@@ -177,10 +177,10 @@ func vaulticBuildGuidedStorageAddress(form vaulticGuidedStorageForm) (string, er
 			return "", err
 		}
 		if p == "" {
-			return "", errors.New("Choisissez un dossier de dépôt.")
+			return "", errors.New(vaulticT("Choisissez un dossier de dépôt."))
 		}
 		if strings.Contains(p, "://") {
-			return "", errors.New("Chemin local invalide.")
+			return "", errors.New(vaulticT("Chemin local invalide."))
 		}
 		address = "local:" + p
 	case "rest":
@@ -195,7 +195,7 @@ func vaulticBuildGuidedStorageAddress(form vaulticGuidedStorageForm) (string, er
 			return "", err
 		}
 		if !sftpUserRe.MatchString(user) {
-			return "", errors.New("Nom d'utilisateur SSH invalide.")
+			return "", errors.New(vaulticT("Nom d'utilisateur SSH invalide."))
 		}
 		host, bracketed, err := vaulticGuidedHost(form.Host)
 		if err != nil {
@@ -241,7 +241,7 @@ func vaulticBuildGuidedStorageAddress(form vaulticGuidedStorageForm) (string, er
 		}
 		address = "rclone:" + remote + ":" + prefix
 	default:
-		return "", errors.New("Ce type de stockage n'est pas pris en charge par cet assistant.")
+		return "", errors.New(vaulticT("Ce type de stockage n'est pas pris en charge par cet assistant."))
 	}
 	if err := vaulticValidateDepot(address); err != nil {
 		return "", err
@@ -275,66 +275,66 @@ const (
 )
 
 func vaulticStorageFields(scheme string) []vaulticStorageField {
-	prefix := vaulticStorageField{Key: "prefix", Label: "Sous-dossier", Placeholder: "vaultic", Default: "vaultic", Help: "Sous-dossier du dépôt. Laissez vide pour la racine."}
+	prefix := vaulticStorageField{Key: "prefix", Label: vaulticT("Sous-dossier"), Placeholder: "vaultic", Default: "vaultic", Help: vaulticT("Sous-dossier du dépôt. Laissez vide pour la racine.")}
 	switch scheme {
 	case "local":
-		return []vaulticStorageField{{Key: "path", Label: "Dossier du dépôt", Placeholder: "D:\\Sauvegardes\\vaultic", Required: true, Browse: true}}
+		return []vaulticStorageField{{Key: "path", Label: vaulticT("Dossier du dépôt"), Placeholder: "D:\\Sauvegardes\\vaultic", Required: true, Browse: true}}
 	case "sftp":
 		return []vaulticStorageField{
-			{Key: "host", Label: "Serveur SSH", Placeholder: "serveur.exemple.fr", Required: true},
-			{Key: "port", Label: "Port SSH", Placeholder: "22 (par défaut)", Help: "Facultatif."},
-			{Key: "user", Label: "Utilisateur", Placeholder: "backup", Required: true},
-			{Key: "path", Label: "Dossier distant", Placeholder: "/srv/vaultic", Required: true, Help: "Authentification par clé SSH déjà configurée (ssh-agent)."},
+			{Key: "host", Label: vaulticT("Serveur SSH"), Placeholder: "serveur.exemple.fr", Required: true},
+			{Key: "port", Label: vaulticT("Port SSH"), Placeholder: vaulticT("22 (par défaut)"), Help: vaulticT("Facultatif.")},
+			{Key: "user", Label: vaulticT("Utilisateur"), Placeholder: "backup", Required: true},
+			{Key: "path", Label: vaulticT("Dossier distant"), Placeholder: "/srv/vaultic", Required: true, Help: vaulticT("Authentification par clé SSH déjà configurée (ssh-agent).")},
 		}
 	case "rest":
 		return []vaulticStorageField{
-			{Key: "url", Label: "URL du serveur", Placeholder: "https://serveur.exemple.fr/depot", Required: true},
-			{Key: "username", Label: "Utilisateur", Placeholder: "facultatif", Help: "Identifiants gardés en mémoire pour cette session seulement."},
-			{Key: "secret", Label: "Mot de passe du serveur", Secret: true, Placeholder: "facultatif"},
+			{Key: "url", Label: vaulticT("URL du serveur"), Placeholder: "https://serveur.exemple.fr/depot", Required: true},
+			{Key: "username", Label: vaulticT("Utilisateur"), Placeholder: "facultatif", Help: vaulticT("Identifiants gardés en mémoire pour cette session seulement.")},
+			{Key: "secret", Label: vaulticT("Mot de passe du serveur"), Secret: true, Placeholder: "facultatif"},
 		}
 	case "gs":
 		return []vaulticStorageField{
-			{Key: "bucket", Label: "Bucket", Placeholder: "mon-bucket", Required: true}, prefix,
-			{Key: "project", Label: "ID du projet", Placeholder: "facultatif, utile à la création", Help: "Authentification : Application Default Credentials de Google."},
+			{Key: "bucket", Label: vaulticT("Bucket"), Placeholder: "mon-bucket", Required: true}, prefix,
+			{Key: "project", Label: vaulticT("ID du projet"), Placeholder: vaulticT("facultatif, utile à la création"), Help: vaulticT("Authentification : Application Default Credentials de Google.")},
 		}
 	case "swift":
 		return []vaulticStorageField{
-			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true, Help: "Créé par restic s'il n'existe pas."}, prefix,
-			{Key: "authurl", Label: "URL Keystone v3", Placeholder: "https://auth.exemple.fr/v3", Help: "Vide : variables OS_* du système."},
-			{Key: "authmode", Label: "Authentification", Choices: []string{vaulticSwiftPasswordChoice, vaulticSwiftAppCredChoice}, Default: vaulticSwiftPasswordChoice},
-			{Key: "username", Label: "Utilisateur", Placeholder: "nom d'utilisateur", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
-			{Key: "appid", Label: "ID de l'Application Credential", Placeholder: "identifiant (UUID)", ModeKey: "authmode", ModeValue: vaulticSwiftAppCredChoice},
+			{Key: "bucket", Label: vaulticT("Conteneur"), Placeholder: "mon-conteneur", Required: true, Help: vaulticT("Créé par restic s'il n'existe pas.")}, prefix,
+			{Key: "authurl", Label: vaulticT("URL Keystone v3"), Placeholder: "https://auth.exemple.fr/v3", Help: vaulticT("Vide : variables OS_* du système.")},
+			{Key: "authmode", Label: vaulticT("Authentification"), Choices: []string{vaulticSwiftPasswordChoice, vaulticSwiftAppCredChoice}, Default: vaulticSwiftPasswordChoice},
+			{Key: "username", Label: vaulticT("Utilisateur"), Placeholder: vaulticT("nom d'utilisateur"), ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
+			{Key: "appid", Label: vaulticT("ID de l'Application Credential"), Placeholder: vaulticT("identifiant (UUID)"), ModeKey: "authmode", ModeValue: vaulticSwiftAppCredChoice},
 			{Key: "secret", Label: "Mot de passe / secret", Secret: true},
-			{Key: "userdomain", Label: "Domaine utilisateur", Default: "Default", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
-			{Key: "project", Label: "Projet", Placeholder: "nom du projet", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
-			{Key: "projectdomain", Label: "Domaine du projet", Default: "Default", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
-			{Key: "region", Label: "Région", Placeholder: "facultatif"},
+			{Key: "userdomain", Label: vaulticT("Domaine utilisateur"), Default: "Default", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
+			{Key: "project", Label: vaulticT("Projet"), Placeholder: vaulticT("nom du projet"), ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
+			{Key: "projectdomain", Label: vaulticT("Domaine du projet"), Default: "Default", ModeKey: "authmode", ModeValue: vaulticSwiftPasswordChoice},
+			{Key: "region", Label: vaulticT("Région"), Placeholder: "facultatif"},
 		}
 	case "rclone":
 		return []vaulticStorageField{
-			{Key: "remote", Label: "Remote rclone", Placeholder: "cloud", Required: true, Help: "Nom d'un remote déjà configuré avec rclone config."},
-			{Key: "prefix", Label: "Sous-dossier", Placeholder: "vaultic", Default: "vaultic"},
+			{Key: "remote", Label: vaulticT("Remote rclone"), Placeholder: "cloud", Required: true, Help: vaulticT("Nom d'un remote déjà configuré avec rclone config.")},
+			{Key: "prefix", Label: vaulticT("Sous-dossier"), Placeholder: "vaultic", Default: "vaultic"},
 		}
 	case "s3":
 		return []vaulticStorageField{
-			{Key: "endpoint", Label: "Endpoint", Placeholder: "s3.amazonaws.com", Default: "s3.amazonaws.com", Required: true},
-			{Key: "bucket", Label: "Bucket", Placeholder: "mon-bucket", Required: true}, prefix,
-			{Key: "region", Label: "Région", Placeholder: "eu-west-3 (facultatif)"},
-			{Key: "access", Label: "Access Key ID", Placeholder: "facultatif", Help: "Clés gardées en mémoire. Vides : configuration système."},
+			{Key: "endpoint", Label: vaulticT("Endpoint"), Placeholder: "s3.amazonaws.com", Default: "s3.amazonaws.com", Required: true},
+			{Key: "bucket", Label: vaulticT("Bucket"), Placeholder: "mon-bucket", Required: true}, prefix,
+			{Key: "region", Label: vaulticT("Région"), Placeholder: "eu-west-3 (facultatif)"},
+			{Key: "access", Label: "Access Key ID", Placeholder: "facultatif", Help: vaulticT("Clés gardées en mémoire. Vides : configuration système.")},
 			{Key: "secret", Label: "Secret Access Key", Secret: true},
 		}
 	case "b2":
 		return []vaulticStorageField{
-			{Key: "bucket", Label: "Bucket", Placeholder: "mon-bucket", Required: true}, prefix,
-			{Key: "access", Label: "Account ID / Key ID", Placeholder: "facultatif", Help: "Clés gardées en mémoire. Vides : configuration système."},
+			{Key: "bucket", Label: vaulticT("Bucket"), Placeholder: "mon-bucket", Required: true}, prefix,
+			{Key: "access", Label: "Account ID / Key ID", Placeholder: "facultatif", Help: vaulticT("Clés gardées en mémoire. Vides : configuration système.")},
 			{Key: "secret", Label: "Application Key", Secret: true},
 		}
 	case "azure":
 		return []vaulticStorageField{
-			{Key: "account", Label: "Compte de stockage", Placeholder: "moncompte"},
-			{Key: "bucket", Label: "Conteneur", Placeholder: "mon-conteneur", Required: true}, prefix,
-			{Key: "authmode", Label: "Authentification", Choices: []string{vaulticAzureKeyChoice, vaulticAzureSASChoice}, Default: vaulticAzureKeyChoice},
-			{Key: "secret", Label: "Clé ou SAS", Secret: true, Help: "Vide : configuration système (Azure CLI, identité managée…)."},
+			{Key: "account", Label: vaulticT("Compte de stockage"), Placeholder: "moncompte"},
+			{Key: "bucket", Label: vaulticT("Conteneur"), Placeholder: "mon-conteneur", Required: true}, prefix,
+			{Key: "authmode", Label: vaulticT("Authentification"), Choices: []string{vaulticAzureKeyChoice, vaulticAzureSASChoice}, Default: vaulticAzureKeyChoice},
+			{Key: "secret", Label: vaulticT("Clé ou SAS"), Secret: true, Help: vaulticT("Vide : configuration système (Azure CLI, identité managée…).")},
 		}
 	}
 	return nil
@@ -345,7 +345,7 @@ func vaulticValidateStorageField(scheme, key, value string) error {
 	empty := strings.TrimSpace(value) == ""
 	for _, f := range vaulticStorageFields(scheme) {
 		if f.Key == key && f.Required && empty {
-			return errors.New("Champ obligatoire.")
+			return errors.New(vaulticT("Champ obligatoire."))
 		}
 	}
 	if empty {
@@ -361,7 +361,7 @@ func vaulticValidateStorageField(scheme, key, value string) error {
 		_, err = vaulticGuidedPort(value)
 	case scheme == "sftp" && key == "user":
 		if v, e := vaulticGuidedStorageField(value); e != nil || !sftpUserRe.MatchString(v) {
-			err = errors.New("Nom d'utilisateur SSH invalide.")
+			err = errors.New(vaulticT("Nom d'utilisateur SSH invalide."))
 		}
 	case scheme == "sftp" && key == "path":
 		_, err = vaulticGuidedSFTPPath(value)
@@ -375,7 +375,7 @@ func vaulticValidateStorageField(scheme, key, value string) error {
 		_, err = vaulticGuidedBucket(value)
 	case key == "project":
 		if v, e := vaulticGuidedStorageField(value); e != nil || !gcpProjectRe.MatchString(v) {
-			err = errors.New("Identifiant de projet invalide.")
+			err = errors.New(vaulticT("Identifiant de projet invalide."))
 		}
 	case scheme == "swift" && key == "authurl":
 		_, err = vaulticSwiftAuthURL(value)
@@ -400,14 +400,14 @@ type vaulticStorageSetup struct {
 func vaulticBuildStorageSetup(scheme string, v map[string]string) (vaulticStorageSetup, error) {
 	var out vaulticStorageSetup
 	if _, ok := vaulticBackendByScheme(scheme); !ok {
-		return out, errors.New("Choisissez un type de stockage.")
+		return out, errors.New(vaulticT("Choisissez un type de stockage."))
 	}
 	name, err := vaulticValidateSavedName(v["name"])
 	if err != nil {
 		return out, err
 	}
 	if v["password"] == "" {
-		return out, errors.New("Saisissez le mot de passe du dépôt restic.")
+		return out, errors.New(vaulticT("Saisissez le mot de passe du dépôt restic."))
 	}
 	switch scheme {
 	case "s3", "b2", "azure":
@@ -455,7 +455,7 @@ func vaulticBuildStorageSetup(scheme string, v map[string]string) (vaulticStorag
 			out.Auth.UserDomain, out.Auth.Project, out.Auth.ProjectDomain = "", "", ""
 		}
 		if out.Auth.AuthURL == "" && (out.Auth.AccessID != "" || out.Auth.Secret != "") {
-			return vaulticStorageSetup{}, errors.New("Indiquez l'URL Keystone v3, ou videz les champs pour utiliser les variables OS_* du système.")
+			return vaulticStorageSetup{}, errors.New(vaulticT("Indiquez l'URL Keystone v3, ou videz les champs pour utiliser les variables OS_* du système."))
 		}
 	}
 	if out.Auth.Scheme != "" {
@@ -499,7 +499,7 @@ func vaulticParseStorageAddress(address string) (string, map[string]string, erro
 	case *azure.Config:
 		v["bucket"], v["prefix"] = c.Container, c.Prefix
 	default:
-		return "", nil, errors.New("Type de dépôt inconnu.")
+		return "", nil, errors.New(vaulticT("Type de dépôt inconnu."))
 	}
 	return loc.Scheme, v, nil
 }
@@ -529,7 +529,7 @@ func vaulticSafeLocation(address string) string {
 			}
 			return u.String()
 		}
-		return scheme + ":[adresse masquée]"
+		return scheme + vaulticT(":[adresse masquée]")
 	}
 	if i := strings.IndexAny(address, "?#"); i >= 0 {
 		address = address[:i]
@@ -541,7 +541,7 @@ func vaulticSafeLocation(address string) string {
 func vaulticProviderName(address string) string {
 	info, ok := vaulticBackendForAddress(address)
 	if !ok {
-		return "Inconnu"
+		return vaulticT("Inconnu")
 	}
 	label, _, _ := strings.Cut(info.Label, " — ")
 	return label

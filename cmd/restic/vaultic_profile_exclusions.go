@@ -15,7 +15,7 @@ const vaulticMaxExclusionBytes = 64 << 10
 // a shell or interpreted as a regular expression.
 func vaulticParseExclusions(text string) ([]string, error) {
 	if len(text) > vaulticMaxExclusionBytes {
-		return nil, fmt.Errorf("La liste d'exclusions dépasse %d Kio", vaulticMaxExclusionBytes/1024)
+		return nil, fmt.Errorf(vaulticT("La liste d'exclusions dépasse %d Kio"), vaulticMaxExclusionBytes/1024)
 	}
 	var rules []string
 	seen := make(map[string]bool)
@@ -25,18 +25,18 @@ func vaulticParseExclusions(text string) ([]string, error) {
 			continue
 		}
 		if strings.ContainsRune(rule, 0) {
-			return nil, fmt.Errorf("Caractère non valide à la ligne %d", lineNumber+1)
+			return nil, fmt.Errorf(vaulticT("Caractère non valide à la ligne %d"), lineNumber+1)
 		}
 		if !seen[rule] {
 			seen[rule] = true
 			rules = append(rules, rule)
 		}
 		if len(rules) > vaulticMaxExclusionRules {
-			return nil, fmt.Errorf("Limite de %d règles d'exclusion dépassée", vaulticMaxExclusionRules)
+			return nil, fmt.Errorf(vaulticT("Limite de %d règles d'exclusion dépassée"), vaulticMaxExclusionRules)
 		}
 	}
 	if err := filter.ValidatePatterns(rules); err != nil {
-		return nil, fmt.Errorf("Motif d'exclusion invalide : %w", err)
+		return nil, fmt.Errorf(vaulticT("Motif d'exclusion invalide : %w"), err)
 	}
 	return rules, nil
 }

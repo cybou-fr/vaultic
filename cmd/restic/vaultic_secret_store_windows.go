@@ -48,7 +48,9 @@ type vaulticWindowsSecretStore struct{}
 
 func newVaulticSystemSecretStore() vaulticSecretStore { return vaulticWindowsSecretStore{} }
 
-func (vaulticWindowsSecretStore) Name() string { return "Gestionnaire d'identifiants Windows" }
+func (vaulticWindowsSecretStore) Name() string {
+	return vaulticT("Gestionnaire d'identifiants Windows")
+}
 
 func (vaulticWindowsSecretStore) Available() bool {
 	return procCredWrite.Find() == nil && procCredRead.Find() == nil && procCredDelete.Find() == nil

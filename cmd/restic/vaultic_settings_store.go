@@ -42,6 +42,6 @@ func vaulticSettingsForSave(saved vaulticSettings, depots []vaulticDepot, active
 		Repository: active, Depots: depots, Sources: stored[profileIndex].Sources,
 		Profiles: stored, ActiveProfile: stored[profileIndex].Name,
 		SchedulerPaused: saved.SchedulerPaused, Notifications: saved.Notifications,
-		CloseToTray: saved.CloseToTray,
+		CloseToTray: saved.CloseToTray, Language: saved.Language,
 	}
 }

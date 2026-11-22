@@ -46,13 +46,13 @@ var vaulticBackendIcons = map[string][]string{
 }
 
 var vaulticBackendTagline = map[string]string{
-	"local": "Disque, USB, NAS", "sftp": "Serveur SSH", "rest": "Serveur restic", "s3": "AWS, MinIO…",
-	"b2": "Backblaze", "azure": "Microsoft", "gs": "Cloud Storage", "swift": "OpenStack", "rclone": "Autres fournisseurs",
+	"local": vaulticL("Disque, USB, NAS"), "sftp": vaulticL("Serveur SSH"), "rest": vaulticL("Serveur restic"), "s3": vaulticL("AWS, MinIO…"),
+	"b2": vaulticL("Backblaze"), "azure": vaulticL("Microsoft"), "gs": vaulticL("Cloud Storage"), "swift": vaulticL("OpenStack"), "rclone": vaulticL("Autres fournisseurs"),
 }
 
 var vaulticBackendTitle = map[string]string{
-	"local": "Local", "sftp": "SFTP", "rest": "REST", "s3": "S3", "b2": "Backblaze B2",
-	"azure": "Azure Blob", "gs": "Google Cloud", "swift": "OpenStack Swift", "rclone": "rclone",
+	"local": vaulticL("Local"), "sftp": vaulticL("SFTP"), "rest": vaulticL("REST"), "s3": vaulticL("S3"), "b2": vaulticL("Backblaze B2"),
+	"azure": vaulticL("Azure Blob"), "gs": vaulticL("Google Cloud"), "swift": vaulticL("OpenStack Swift"), "rclone": vaulticL("rclone"),
 }
 
 func vaulticBackendIcon(scheme string, accent bool) fyne.Resource {
@@ -120,10 +120,10 @@ func (c *vaulticBackendCard) CreateRenderer() fyne.WidgetRenderer {
 	r.bg.CornerRadius = 12
 	r.icon = canvas.NewImageFromResource(vaulticBackendIcon(c.info.Scheme, false))
 	r.icon.FillMode = canvas.ImageFillContain
-	r.title = canvas.NewText(vaulticBackendTitle[c.info.Scheme], vaulticText)
+	r.title = canvas.NewText(vaulticT(vaulticBackendTitle[c.info.Scheme]), vaulticText)
 	r.title.TextSize = 14
 	r.title.TextStyle = fyne.TextStyle{Bold: true}
-	r.tagline = canvas.NewText(vaulticBackendTagline[c.info.Scheme], vaulticMuted)
+	r.tagline = canvas.NewText(vaulticT(vaulticBackendTagline[c.info.Scheme]), vaulticMuted)
 	r.tagline.TextSize = 11
 	return r
 }
@@ -232,15 +232,15 @@ type vaulticStorageSetupUI struct {
 
 func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI {
 	u := &vaulticStorageSetupUI{hooks: h, entries: map[string]fyne.CanvasObject{}}
-	u.title = vaulticHeading("Ajouter un dépôt", 20)
+	u.title = vaulticHeading(vaulticT("Ajouter un dépôt"), 20)
 	u.description = vaulticWrappedLabel("")
 	u.fieldBox = container.NewVBox()
 	u.name = widget.NewEntry()
-	u.name.SetPlaceHolder("Ex. : Disque externe")
+	u.name.SetPlaceHolder(vaulticT("Ex. : Disque externe"))
 	u.name.Validator = func(s string) error { _, err := vaulticValidateSavedName(s); return err }
 	u.name.OnChanged = func(string) { u.refresh() }
 	u.pass = widget.NewPasswordEntry()
-	u.pass.SetPlaceHolder("Mot de passe de chiffrement restic — jamais enregistré")
+	u.pass.SetPlaceHolder(vaulticT("Mot de passe de chiffrement restic — jamais enregistré"))
 	u.pass.OnChanged = func(string) { u.refresh() }
 	u.preview = vaulticWrappedLabel("")
 	u.problem = vaulticWrappedLabel("")
@@ -258,24 +258,24 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 		u.cardBox.Add(card)
 	}
 
-	u.wizardBtn = widget.NewButtonWithIcon("Assistant pas à pas…", theme.HelpIcon(), func() {
+	u.wizardBtn = widget.NewButtonWithIcon(vaulticT("Assistant pas à pas…"), theme.HelpIcon(), func() {
 		if u.hooks.Wizard != nil {
 			u.hooks.Wizard(u.scheme)
 		}
 	})
 	u.wizardBtn.Importance = widget.LowImportance
-	u.testBtn = widget.NewButtonWithIcon("Tester la connexion", theme.ViewRefreshIcon(), func() { u.submit(vaulticActionTest) })
-	u.openBtn = widget.NewButtonWithIcon("Ouvrir le dépôt existant", theme.FolderOpenIcon(), func() { u.submit(vaulticActionOpen) })
+	u.testBtn = widget.NewButtonWithIcon(vaulticT("Tester la connexion"), theme.ViewRefreshIcon(), func() { u.submit(vaulticActionTest) })
+	u.openBtn = widget.NewButtonWithIcon(vaulticT("Ouvrir le dépôt existant"), theme.FolderOpenIcon(), func() { u.submit(vaulticActionOpen) })
 	u.openBtn.Importance = widget.HighImportance
-	u.createBtn = widget.NewButtonWithIcon("Créer un nouveau dépôt", theme.ContentAddIcon(), func() { u.submit(vaulticActionCreate) })
-	u.saveBtn = widget.NewButtonWithIcon("Enregistrer les modifications", theme.DocumentSaveIcon(), func() { u.submit(vaulticActionSave) })
+	u.createBtn = widget.NewButtonWithIcon(vaulticT("Créer un nouveau dépôt"), theme.ContentAddIcon(), func() { u.submit(vaulticActionCreate) })
+	u.saveBtn = widget.NewButtonWithIcon(vaulticT("Enregistrer les modifications"), theme.DocumentSaveIcon(), func() { u.submit(vaulticActionSave) })
 	u.saveBtn.Importance = widget.HighImportance
-	u.cancelEditBtn = widget.NewButton("Annuler la modification", func() {
+	u.cancelEditBtn = widget.NewButton(vaulticT("Annuler la modification"), func() {
 		if u.hooks.CancelEdit != nil {
 			u.hooks.CancelEdit()
 		}
 	})
-	u.cancelBtn = widget.NewButtonWithIcon("Annuler le test", theme.CancelIcon(), func() {
+	u.cancelBtn = widget.NewButtonWithIcon(vaulticT("Annuler le test"), theme.CancelIcon(), func() {
 		if u.hooks.Cancel != nil {
 			u.hooks.Cancel()
 		}
@@ -283,27 +283,27 @@ func vaulticNewStorageSetupUI(h vaulticStorageSetupHooks) *vaulticStorageSetupUI
 	u.cancelBtn.Hide()
 
 	state := container.NewVBox(
-		container.NewHBox(vaulticCaption("ÉTAT DE LA CONNEXION"), u.badge),
+		container.NewHBox(vaulticCaption(vaulticT("ÉTAT DE LA CONNEXION")), u.badge),
 		u.detail, u.busyBar, u.cancelBtn,
 	)
-	identity := widget.NewForm(widget.NewFormItem("Nom dans Vaultic", u.name), widget.NewFormItem("Mot de passe restic", u.pass))
+	identity := widget.NewForm(widget.NewFormItem(vaulticT("Nom dans Vaultic"), u.name), widget.NewFormItem(vaulticT("Mot de passe restic"), u.pass))
 	identity.Orientation = widget.Vertical
 	u.Content = vaulticSurface(container.NewVBox(
 		u.title,
-		vaulticCaption("1 · Choisissez le type de stockage"),
+		vaulticCaption(vaulticT("1 · Choisissez le type de stockage")),
 		u.cardBox,
 		u.description,
 		container.NewHBox(u.wizardBtn),
 		widget.NewSeparator(),
-		vaulticCaption("2 · Renseignez l'emplacement"),
+		vaulticCaption(vaulticT("2 · Renseignez l'emplacement")),
 		u.fieldBox,
-		vaulticCaption("3 · Nommez le dépôt et protégez-le"),
+		vaulticCaption(vaulticT("3 · Nommez le dépôt et protégez-le")),
 		identity,
 		u.preview, u.problem,
 		widget.NewSeparator(),
 		state,
 		container.NewGridWrap(fyne.NewSize(215, 40), u.testBtn, u.openBtn, u.createBtn, u.saveBtn, u.cancelEditBtn),
-		vaulticWrappedLabel("Les identifiants cloud restent en mémoire pour cette session. Le mot de passe restic n'est jamais enregistré."),
+		vaulticWrappedLabel(vaulticT("Les identifiants cloud restent en mémoire pour cette session. Le mot de passe restic n'est jamais enregistré.")),
 	))
 	u.SetState(vaulticProbeResult{State: vaulticConnNotTested})
 	u.SetScheme(vaulticBackendCatalog[0].Scheme)
@@ -380,7 +380,7 @@ func (u *vaulticStorageSetupUI) SetScheme(scheme string) {
 			e.OnChanged = func(string) { u.refresh() }
 			control = e
 			if field.Browse && u.hooks.Browse != nil {
-				browse := widget.NewButtonWithIcon("Parcourir…", theme.FolderOpenIcon(), func() { u.hooks.Browse(func(p string) { e.SetText(p) }) })
+				browse := widget.NewButtonWithIcon(vaulticT("Parcourir…"), theme.FolderOpenIcon(), func() { u.hooks.Browse(func(p string) { e.SetText(p) }) })
 				control = container.NewBorder(nil, nil, nil, browse, e)
 			}
 		}
@@ -446,7 +446,7 @@ func (u *vaulticStorageSetupUI) build(action string) (vaulticStorageSetup, error
 	if action == vaulticActionTest || action == vaulticActionSave {
 		v["password"] = "placeholder"
 		if strings.TrimSpace(v["name"]) == "" {
-			v["name"] = "Test"
+			v["name"] = vaulticT("Test")
 		}
 	}
 	setup, err := vaulticBuildStorageSetup(u.scheme, v)
@@ -470,7 +470,7 @@ func (u *vaulticStorageSetupUI) refresh() {
 			u.problem.SetText("")
 		}
 	} else {
-		u.preview.SetText("Adresse : " + vaulticSafeLocation(setup.Address))
+		u.preview.SetText(vaulticT("Adresse : ") + vaulticSafeLocation(setup.Address))
 		u.problem.SetText("")
 	}
 	u.updateButtons()
@@ -549,10 +549,10 @@ func (u *vaulticStorageSetupUI) SetState(r vaulticProbeResult) {
 	switch r.State {
 	case vaulticConnNotTested:
 		if r.Detail == "" {
-			r.Detail = "Aucun test effectué. Tester la connexion ne modifie jamais le dépôt."
+			r.Detail = vaulticT("Aucun test effectué. Tester la connexion ne modifie jamais le dépôt.")
 		}
 	case vaulticConnTesting:
-		r.Detail = "Vérification en cours — vous pouvez annuler à tout moment."
+		r.Detail = vaulticT("Vérification en cours — vous pouvez annuler à tout moment.")
 	}
 	u.detail.SetText(r.Detail)
 }
@@ -575,7 +575,7 @@ func (u *vaulticStorageSetupUI) SetBusy(on bool) {
 // Reset clears the form and returns to the creation mode.
 func (u *vaulticStorageSetupUI) Reset() {
 	u.editing = false
-	u.title.Text = "Ajouter un dépôt"
+	u.title.Text = vaulticT("Ajouter un dépôt")
 	u.title.Refresh()
 	u.name.SetText("")
 	u.pass.SetText("")
@@ -590,7 +590,7 @@ func (u *vaulticStorageSetupUI) Edit(name, address string) error {
 		return err
 	}
 	u.editing = true
-	u.title.Text = "Modifier le dépôt"
+	u.title.Text = vaulticT("Modifier le dépôt")
 	u.title.Refresh()
 	u.SetScheme(scheme)
 	for key, value := range values {

@@ -54,25 +54,25 @@ func (r vaulticRunRecord) Duration() time.Duration {
 func vaulticStatusLabel(status string) string {
 	switch status {
 	case vaulticStatusSuccess:
-		return "Réussie"
+		return vaulticT("Réussie")
 	case vaulticStatusFailure:
-		return "Échec"
+		return vaulticT("Échec")
 	case vaulticStatusCancelled:
-		return "Annulée"
+		return vaulticT("Annulée")
 	case vaulticStatusSkipped:
-		return "Ignorée"
+		return vaulticT("Ignorée")
 	}
-	return "Inconnue"
+	return vaulticT("Inconnue")
 }
 
 func vaulticTriggerLabel(trigger string) string {
 	if trigger == vaulticTriggerScheduled {
-		return "Planifiée"
+		return vaulticT("Planifiée")
 	}
 	if trigger == vaulticTriggerRetention {
-		return "Conservation"
+		return vaulticT("Conservation")
 	}
-	return "Manuelle"
+	return vaulticT("Manuelle")
 }
 
 var (
@@ -140,7 +140,7 @@ func (h *vaulticHistoryStore) load() error {
 		return err
 	}
 	if !info.Mode().IsRegular() || info.Size() > 8<<20 {
-		return errors.New("Le fichier d'historique est inattendu et a été ignoré.")
+		return errors.New(vaulticT("Le fichier d'historique est inattendu et a été ignoré."))
 	}
 	raw, err := os.ReadFile(h.path)
 	if err != nil {
@@ -151,7 +151,7 @@ func (h *vaulticHistoryStore) load() error {
 		// A damaged history must not block backups: start afresh and keep the
 		// damaged file aside for inspection.
 		_ = os.Rename(h.path, h.path+".damaged")
-		return fmt.Errorf("Historique illisible, un nouvel historique a été créé : %w", err)
+		return fmt.Errorf(vaulticT("Historique illisible, un nouvel historique a été créé : %w"), err)
 	}
 	for _, r := range file.Records {
 		r.Summary = vaulticSanitizeSummary(r.Summary, nil)

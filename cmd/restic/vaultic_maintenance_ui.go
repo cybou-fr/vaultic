@@ -14,7 +14,8 @@ import (
 	"github.com/restic/restic/internal/global"
 )
 
-const vaulticNoStorageAnalysis = "Aucune analyse effectuée pour ce dépôt."
+// Rebuilt by vaulticLocalizeTables.
+var vaulticNoStorageAnalysis = vaulticL("Aucune analyse effectuée pour ce dépôt.")
 
 // vaulticMaintenanceHooks connects the integrity and storage pages.
 type vaulticMaintenanceHooks struct {
@@ -41,14 +42,14 @@ func newVaulticMaintenanceController(hooks vaulticMaintenanceHooks) *vaulticMain
 		Snapshots: vaulticHeading("—", 24),
 		Updated:   vaulticWrappedLabel(vaulticNoStorageAnalysis),
 	}
-	c.Check = widget.NewButton("Vérifier l'intégrité", func() {
-		hooks.Run("Vérification", func(ctx context.Context, g global.Options) error {
+	c.Check = widget.NewButton(vaulticT("Vérifier l'intégrité"), func() {
+		hooks.Run(vaulticT("Vérification"), func(ctx context.Context, g global.Options) error {
 			_, err := runCheck(ctx, CheckOptions{}, g, nil, g.Term)
 			return err
 		})
 	})
-	c.Analyze = widget.NewButtonWithIcon("Analyser le stockage", theme.SearchIcon(), func() {
-		hooks.Run("Analyse du stockage", func(ctx context.Context, g global.Options) error {
+	c.Analyze = widget.NewButtonWithIcon(vaulticT("Analyser le stockage"), theme.SearchIcon(), func() {
+		hooks.Run(vaulticT("Analyse du stockage"), func(ctx context.Context, g global.Options) error {
 			metrics, err := vaulticCollectStorageStatistics(ctx, g)
 			if err != nil {
 				return err
@@ -82,7 +83,7 @@ func (c *vaulticMaintenanceController) Show(m vaulticStorageStatistics, when tim
 	c.Volume.Refresh()
 	c.Blobs.Refresh()
 	c.Snapshots.Refresh()
-	c.Updated.SetText("Dernière analyse : " + when.Format("02/01/2006 à 15:04"))
+	c.Updated.SetText(vaulticT("Dernière analyse : ") + when.Format(vaulticT("02/01/2006 à 15:04")))
 }
 
 // Reset forgets the last analysis, for example after switching repository.
@@ -136,7 +137,7 @@ func (c *vaulticWindowCloser) Quit() {
 		return
 	}
 	c.prompting = true
-	c.Confirm("Quitter Vaultic", "Annuler l’opération et fermer Vaultic après son arrêt ?", func(ok bool) {
+	c.Confirm(vaulticT("Quitter Vaultic"), vaulticT("Annuler l’opération et fermer Vaultic après son arrêt ?"), func(ok bool) {
 		c.prompting = false
 		if !ok {
 			return

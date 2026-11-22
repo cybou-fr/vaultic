@@ -18,7 +18,7 @@ type vaulticLinuxSecretStore struct{}
 
 func newVaulticSystemSecretStore() vaulticSecretStore { return vaulticLinuxSecretStore{} }
 
-func (vaulticLinuxSecretStore) Name() string { return "Trousseau libsecret" }
+func (vaulticLinuxSecretStore) Name() string { return vaulticT("Trousseau libsecret") }
 
 func (vaulticLinuxSecretStore) Available() bool {
 	_, err := exec.LookPath("secret-tool")

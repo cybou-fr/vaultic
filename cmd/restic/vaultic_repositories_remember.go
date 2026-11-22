@@ -29,28 +29,28 @@ func (c *vaulticRepositoriesController) LoadRemembered() {
 		return
 	}
 	if !c.secrets.Available() {
-		c.hooks.Log("Mot de passe mémorisé indisponible : " + c.secrets.Name() + " n'est pas accessible.")
+		c.hooks.Log(vaulticT("Mot de passe mémorisé indisponible : ") + c.secrets.Name() + vaulticT(" n'est pas accessible."))
 		return
 	}
 	secret, err := c.secrets.Get(vaulticSecretKey(depot.Location))
 	if err != nil {
 		if errors.Is(err, errSecretNotFound) {
 			c.setRemember(depot.Location, false)
-			c.hooks.Log("Le mot de passe mémorisé pour « " + depot.Name + " » n'existe plus dans " + c.secrets.Name() + " : saisissez-le de nouveau.")
+			c.hooks.Log(vaulticT("Le mot de passe mémorisé pour « ") + depot.Name + vaulticT(" » n'existe plus dans ") + c.secrets.Name() + vaulticT(" : saisissez-le de nouveau."))
 		} else {
-			c.hooks.Log("Lecture du mot de passe mémorisé impossible : " + err.Error())
+			c.hooks.Log(vaulticT("Lecture du mot de passe mémorisé impossible : ") + err.Error())
 		}
 		return
 	}
 	c.Password.SetText(secret)
-	c.hooks.Log("Mot de passe de « " + depot.Name + " » chargé depuis " + c.secrets.Name() + ".")
+	c.hooks.Log(vaulticT("Mot de passe de « ") + depot.Name + vaulticT(" » chargé depuis ") + c.secrets.Name() + ".")
 }
 
 // setRemember stores the flag of a repository in the settings (not the secret).
 func (c *vaulticRepositoriesController) setRemember(location string, on bool) bool {
 	next := vaulticSetRememberPassword(c.settings.Depots, location, on)
 	if err := c.hooks.Persist(next, c.active); err != nil {
-		c.hooks.Log("Erreur d'enregistrement des préférences : " + err.Error())
+		c.hooks.Log(vaulticT("Erreur d'enregistrement des préférences : ") + err.Error())
 		return false
 	}
 	c.settings.Depots = next
@@ -74,11 +74,11 @@ func (c *vaulticRepositoriesController) onRememberChanged(on bool) {
 			dialog.ShowError(err, w)
 		}
 		c.setRemember(depot.Location, false)
-		c.hooks.Log("Mot de passe de « " + depot.Name + " » effacé de " + c.secrets.Name() + ".")
+		c.hooks.Log(vaulticT("Mot de passe de « ") + depot.Name + vaulticT(" » effacé de ") + c.secrets.Name() + ".")
 		return
 	}
 	if c.Password.Text == "" {
-		dialog.ShowInformation("Mot de passe requis", "Saisissez d'abord le mot de passe du dépôt, puis cochez cette case.", w)
+		dialog.ShowInformation(vaulticT("Mot de passe requis"), vaulticT("Saisissez d'abord le mot de passe du dépôt, puis cochez cette case."), w)
 		c.syncRemember()
 		return
 	}
@@ -92,7 +92,7 @@ func (c *vaulticRepositoriesController) onRememberChanged(on bool) {
 		c.syncRemember()
 		return
 	}
-	c.hooks.Log("Mot de passe de « " + depot.Name + " » mémorisé dans " + c.secrets.Name() + " (jamais dans les fichiers Vaultic).")
+	c.hooks.Log(vaulticT("Mot de passe de « ") + depot.Name + vaulticT(" » mémorisé dans ") + c.secrets.Name() + vaulticT(" (jamais dans les fichiers Vaultic)."))
 }
 
 // moveRemembered keeps a remembered password with its repository when the
@@ -107,7 +107,7 @@ func (c *vaulticRepositoriesController) moveRemembered(oldLocation, newLocation 
 		err = c.secrets.Set(vaulticSecretKey(newLocation), secret)
 	}
 	if err != nil {
-		c.hooks.Log("Mot de passe mémorisé non transféré vers la nouvelle adresse : " + err.Error())
+		c.hooks.Log(vaulticT("Mot de passe mémorisé non transféré vers la nouvelle adresse : ") + err.Error())
 		return
 	}
 	_ = c.secrets.Delete(vaulticSecretKey(oldLocation))

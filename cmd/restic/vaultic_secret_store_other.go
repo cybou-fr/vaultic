@@ -10,7 +10,7 @@ type vaulticNoSecretStore struct{}
 
 func newVaulticSystemSecretStore() vaulticSecretStore { return vaulticNoSecretStore{} }
 
-func (vaulticNoSecretStore) Name() string               { return "Aucun magasin d'identifiants" }
+func (vaulticNoSecretStore) Name() string               { return vaulticT("Aucun magasin d'identifiants") }
 func (vaulticNoSecretStore) Available() bool            { return false }
 func (vaulticNoSecretStore) Get(string) (string, error) { return "", errSecretUnavailable }
 func (vaulticNoSecretStore) Set(string, string) error   { return errSecretUnavailable }

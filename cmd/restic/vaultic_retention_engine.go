@@ -24,7 +24,7 @@ func vaulticListSnapshots(ctx context.Context, g global.Options) ([]vaulticSnaps
 	var out bytes.Buffer
 	term, ok := g.Term.(*vaulticTerminal)
 	if !ok {
-		return nil, errors.New("Terminal Vaultic requis pour lister les instantanés")
+		return nil, errors.New(vaulticT("Terminal Vaultic requis pour lister les instantanés"))
 	}
 	original := term.output
 	term.output = &out
@@ -34,7 +34,7 @@ func vaulticListSnapshots(ctx context.Context, g global.Options) ([]vaulticSnaps
 	}
 	var list []vaulticSnapshot
 	if err := json.Unmarshal(out.Bytes(), &list); err != nil {
-		return nil, fmt.Errorf("Décodage des instantanés : %w", err)
+		return nil, fmt.Errorf(vaulticT("Décodage des instantanés : %w"), err)
 	}
 	sort.SliceStable(list, func(i, j int) bool { return list[i].Time.After(list[j].Time) })
 	return list, nil
@@ -44,11 +44,11 @@ func vaulticListSnapshots(ctx context.Context, g global.Options) ([]vaulticSnaps
 // It frees no space by itself: unreferenced data stays until a prune.
 func vaulticForgetSnapshots(ctx context.Context, g global.Options, ids []string) error {
 	if len(ids) == 0 {
-		return errors.New("aucun instantané à supprimer")
+		return errors.New(vaulticT("aucun instantané à supprimer"))
 	}
 	for _, id := range ids {
 		if !vaulticFullSnapshotID.MatchString(id) {
-			return fmt.Errorf("identifiant d'instantané invalide : %q", id)
+			return fmt.Errorf(vaulticT("identifiant d'instantané invalide : %q"), id)
 		}
 	}
 	return runForget(ctx, ForgetOptions{}, PruneOptions{MaxUnused: "5%"}, g, g.Term, ids)

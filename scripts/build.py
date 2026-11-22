@@ -26,8 +26,14 @@ def build():
     binary = output / ("vaultic.exe" if sys.platform == "win32" else "vaultic")
     ldflags = "-s -w -H windowsgui" if sys.platform == "win32" else "-s -w"
     run("go", "build", "-mod=readonly", "-ldflags", ldflags, "-o", binary, "./cmd/restic")
-    for name in ("LICENSE", "LICENSE.restic", "NOTICE", "THIRD_PARTY_NOTICES.md", "portable.flag"):
+    for name in ("LICENSE", "LICENSE.restic", "NOTICE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / name, output / name)
+    # The dist folder is a portable build: this marker makes settings live next
+    # to the executable. It is generated here and not tracked in the repository,
+    # so running from a checkout never switches to portable mode by accident.
+    (output / "portable.flag").write_text(
+        "This empty marker file enables portable settings next to the executable.\n"
+        "Do not store passwords here.\n", encoding="utf-8")
     fyne_dir = subprocess.check_output(
         ["go", "list", "-m", "-f", "{{.Dir}}", "fyne.io/fyne/v2"],
         cwd=ROOT, text=True,

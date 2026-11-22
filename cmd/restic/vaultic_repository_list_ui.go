@@ -25,23 +25,23 @@ func vaulticRepositoryRow(depot vaulticDepot, active bool, h vaulticRepositoryHo
 	provider := vaulticCaption(vaulticProviderName(depot.Location))
 	head := container.NewHBox(container.NewGridWrap(fyne.NewSize(28, 28), icon), name)
 	if active {
-		badge := canvas.NewText("ACTIF", vaulticAccent)
+		badge := canvas.NewText(vaulticT("ACTIF"), vaulticAccent)
 		badge.TextSize, badge.TextStyle = 11, fyne.TextStyle{Bold: true}
 		head.Add(badge)
 	}
 	location := widget.NewLabel(vaulticSafeLocation(depot.Location))
 	location.Truncation = fyne.TextTruncateEllipsis
-	verified := vaulticCaption("Dernière vérification : " + vaulticVerificationSummary(depot))
+	verified := vaulticCaption(vaulticT("Dernière vérification : ") + vaulticVerificationSummary(depot))
 
-	connect := widget.NewButtonWithIcon("Se connecter", theme.LoginIcon(), func() { h.Connect(depot) })
+	connect := widget.NewButtonWithIcon(vaulticT("Se connecter"), theme.LoginIcon(), func() { h.Connect(depot) })
 	if !active {
 		connect.Importance = widget.MediumImportance
 	} else {
 		connect.Importance = widget.HighImportance
 	}
-	edit := widget.NewButtonWithIcon("Modifier", theme.DocumentCreateIcon(), func() { h.Edit(depot) })
-	test := widget.NewButtonWithIcon("Tester", theme.ViewRefreshIcon(), func() { h.Test(depot) })
-	forget := widget.NewButtonWithIcon("Oublier", theme.DeleteIcon(), func() { h.Forget(depot) })
+	edit := widget.NewButtonWithIcon(vaulticT("Modifier"), theme.DocumentCreateIcon(), func() { h.Edit(depot) })
+	test := widget.NewButtonWithIcon(vaulticT("Tester"), theme.ViewRefreshIcon(), func() { h.Test(depot) })
+	forget := widget.NewButtonWithIcon(vaulticT("Oublier"), theme.DeleteIcon(), func() { h.Forget(depot) })
 	forget.Importance = widget.LowImportance
 
 	body := container.NewVBox(head, provider, location, verified, container.NewGridWrap(fyne.NewSize(112, 38), connect, edit, test, forget))

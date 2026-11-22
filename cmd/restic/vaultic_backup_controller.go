@@ -50,9 +50,9 @@ func vaulticFindProfile(profiles []vaulticBackupProfile, name string) (vaulticBa
 // vaulticBackupTitle is the operation title of a run.
 func vaulticBackupTitle(trigger string) string {
 	if trigger == vaulticTriggerManual {
-		return "Sauvegarde"
+		return vaulticT("Sauvegarde")
 	}
-	return "Sauvegarde planifiée"
+	return vaulticT("Sauvegarde planifiée")
 }
 
 // vaulticSetSlot records slot as the latest handled slot of the profile's
@@ -114,11 +114,11 @@ type vaulticBackupController struct {
 
 func newVaulticBackupController(hooks vaulticBackupHooks) *vaulticBackupController {
 	c := &vaulticBackupController{hooks: hooks, stop: make(chan struct{})}
-	c.BackupButton = widget.NewButton("Sauvegarder maintenant", func() {
+	c.BackupButton = widget.NewButton(vaulticT("Sauvegarder maintenant"), func() {
 		c.Launch(vaulticTriggerManual, hooks.ProfileName(), time.Time{}, false)
 	})
 	c.BackupButton.Importance = widget.HighImportance
-	c.ReportButton = widget.NewButton("Dernier rapport…", c.ShowReport)
+	c.ReportButton = widget.NewButton(vaulticT("Dernier rapport…"), c.ShowReport)
 	c.Coord = newVaulticCoordinator(hooks.Busy, vaulticCoordinatorEnv{
 		Now:      time.Now,
 		Location: func() *time.Location { return time.Local },
@@ -157,8 +157,8 @@ func newVaulticBackupController(hooks vaulticBackupHooks) *vaulticBackupControll
 	}
 	c.Coord.OnPersistenceError = func(err error) {
 		fyne.Do(func() {
-			hooks.Log("Erreur de sauvegarde des métadonnées : " + err.Error())
-			hooks.Panel.Status.SetText("Attention : historique ou planification non enregistré(e).")
+			hooks.Log(vaulticT("Erreur de sauvegarde des métadonnées : ") + err.Error())
+			hooks.Panel.Status.SetText(vaulticT("Attention : historique ou planification non enregistré(e)."))
 		})
 	}
 	return c
@@ -185,7 +185,7 @@ func (c *vaulticBackupController) Shutdown() {
 
 func (c *vaulticBackupController) saveSlot(profile string, slot time.Time) error {
 	if !vaulticSetSlot(c.hooks.Settings.Profiles, profile, slot) {
-		return fmt.Errorf("Profil planifié introuvable : %s", profile)
+		return fmt.Errorf(vaulticT("Profil planifié introuvable : %s"), profile)
 	}
 	return c.hooks.Persist()
 }
@@ -197,7 +197,7 @@ func (c *vaulticBackupController) Report() string { return c.lastReport }
 func (c *vaulticBackupController) ShowReport() {
 	content := container.NewVScroll(vaulticWrappedLabel(c.lastReport))
 	content.SetMinSize(fyne.NewSize(340, 170))
-	reportDialog := dialog.NewCustom("Rapport de sauvegarde", "Fermer", content, c.hooks.Window)
+	reportDialog := dialog.NewCustom(vaulticT("Rapport de sauvegarde"), vaulticT("Fermer"), content, c.hooks.Window)
 	reportDialog.Resize(fyne.NewSize(490, 300))
 	reportDialog.Show()
 }
@@ -221,13 +221,13 @@ func (c *vaulticBackupController) Launch(trigger, profileName string, slot time.
 	repo, password := h.Repository(), h.Password()
 	if repo == "" || password == "" {
 		if manual {
-			dialog.ShowInformation("Informations manquantes", "Indiquez un dépôt et son mot de passe.", h.Window)
+			dialog.ShowInformation(vaulticT("Informations manquantes"), vaulticT("Indiquez un dépôt et son mot de passe."), h.Window)
 		}
 		return false
 	}
 	if !c.Coord.TryAcquire() {
 		if manual {
-			dialog.ShowInformation("Opération en cours", "Une seule opération est autorisée à la fois.", h.Window)
+			dialog.ShowInformation(vaulticT("Opération en cours"), vaulticT("Une seule opération est autorisée à la fois."), h.Window)
 		}
 		return false
 	}
@@ -239,7 +239,7 @@ func (c *vaulticBackupController) Launch(trigger, profileName string, slot time.
 	h.SetBusy(true)
 	h.Panel.Progress.SetValue(0)
 	h.Panel.Status.SetText(title + "…")
-	h.Log("Début : " + title + " — profil « " + profileName + " »")
+	h.Log(vaulticT("Début : ") + title + vaulticT(" — profil « ") + profileName + " »")
 	gopts := global.Options{
 		Repo: vaulticResolvedRepository(repo), Password: password, Backends: vaulticBackendsForSession(cloudAuth),
 		JSON: true, Verbosity: 1,

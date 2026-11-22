@@ -28,7 +28,7 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 			initialPath = ""
 		}
 	}
-	w := app.NewWindow("Vaultic — Instantané " + snapshot.ShortID)
+	w := app.NewWindow(vaulticT("Vaultic — Instantané ") + snapshot.ShortID)
 	closed := false
 	w.SetOnClosed(func() { closed = true })
 	directory := "/"
@@ -39,16 +39,16 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 
 	location := widget.NewLabel(directory)
 	details := widget.NewLabel("")
-	info := widget.NewLabel("Lecture de l’instantané…")
+	info := widget.NewLabel(vaulticT("Lecture de l’instantané…"))
 	count := widget.NewLabel("")
-	empty := vaulticEmptyState(vaulticWrappedLabel("Aucun élément à afficher."))
+	empty := vaulticEmptyState(vaulticWrappedLabel(vaulticT("Aucun élément à afficher.")))
 	query := widget.NewEntry()
-	query.SetPlaceHolder("Nom ou chemin dans l’instantané")
-	back := widget.NewButton("Dossier parent", nil)
-	open := widget.NewButton("Ouvrir le dossier", nil)
-	toggle := widget.NewButton("Ajouter à la sélection", nil)
-	clear := widget.NewButton("Vider la sélection", nil)
-	restore := widget.NewButton("Restaurer la sélection…", nil)
+	query.SetPlaceHolder(vaulticT("Nom ou chemin dans l’instantané"))
+	back := widget.NewButton(vaulticT("Dossier parent"), nil)
+	open := widget.NewButton(vaulticT("Ouvrir le dossier"), nil)
+	toggle := widget.NewButton(vaulticT("Ajouter à la sélection"), nil)
+	clear := widget.NewButton(vaulticT("Vider la sélection"), nil)
+	restore := widget.NewButton(vaulticT("Restaurer la sélection…"), nil)
 	restore.Importance = widget.HighImportance
 
 	files := widget.NewList(func() int { return len(nodes) }, vaulticListLabel,
@@ -64,11 +64,11 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 			kind := node.Type
 			switch node.Type {
 			case "dir":
-				kind = "Dossier"
+				kind = vaulticT("Dossier")
 			case "file":
-				kind = "Fichier"
+				kind = vaulticT("Fichier")
 			case "symlink":
-				kind = "Lien"
+				kind = vaulticT("Lien")
 			}
 			line := kind + " · " + name
 			if node.Size != nil {
@@ -85,25 +85,25 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 		hasRow := selected >= 0 && selected < len(nodes)
 		vaulticSetButtonEnabled(open, hasRow && nodes[selected].Type == "dir")
 		vaulticSetButtonEnabled(toggle, hasRow && vaulticRestorableNode(nodes[selected]))
-		toggle.SetText("Ajouter à la sélection")
+		toggle.SetText(vaulticT("Ajouter à la sélection"))
 		details.SetText("")
 		if hasRow {
 			node := nodes[selected]
 			details.SetText(node.Path)
 			if !vaulticRestorableNode(node) {
-				details.SetText(node.Path + " · Type non restaurable")
+				details.SetText(node.Path + vaulticT(" · Type non restaurable"))
 			}
 			if _, ok := picked[node.Path]; ok {
-				toggle.SetText("Retirer de la sélection")
+				toggle.SetText(vaulticT("Retirer de la sélection"))
 			}
 		}
-		count.SetText(fmt.Sprintf("%d élément(s) sélectionné(s)", len(picked)))
+		count.SetText(fmt.Sprintf(vaulticT("%d élément(s) sélectionné(s)"), len(picked)))
 		vaulticSetButtonEnabled(restore, len(picked) > 0)
 		vaulticSetButtonEnabled(clear, len(picked) > 0)
 		if searching {
-			back.SetText("Quitter la recherche")
+			back.SetText(vaulticT("Quitter la recherche"))
 		} else {
-			back.SetText("Dossier parent")
+			back.SetText(vaulticT("Dossier parent"))
 		}
 		vaulticSetButtonEnabled(back, searching || directory != "/")
 	}
@@ -133,7 +133,7 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 		update()
 	}
 	load := func(next string) {
-		run("Exploration de l’instantané", func(ctx context.Context, opts global.Options) error {
+		run(vaulticT("Exploration de l’instantané"), func(ctx context.Context, opts global.Options) error {
 			found, err := vaulticListSnapshotDirectory(ctx, opts, snapshot.ID, next)
 			if err != nil {
 				return err
@@ -143,7 +143,7 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 					return
 				}
 				directory = next
-				display(found, next, fmt.Sprintf("%d élément(s)", len(found)), false)
+				display(found, next, fmt.Sprintf(vaulticT("%d élément(s)"), len(found)), false)
 				if initialPath != "" && path.Dir(initialPath) == next {
 					desired := initialPath
 					initialPath = ""
@@ -158,14 +158,14 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 							picked[node.Path] = node
 							files.Refresh()
 							update()
-							info.SetText("Élément retrouvé et ajouté à la sélection. Choisissez « Restaurer la sélection… » pour continuer.")
+							info.SetText(vaulticT("Élément retrouvé et ajouté à la sélection. Choisissez « Restaurer la sélection… » pour continuer."))
 						} else {
-							info.SetText("Élément retrouvé mais son type n'est pas restaurable en toute sécurité.")
+							info.SetText(vaulticT("Élément retrouvé mais son type n'est pas restaurable en toute sécurité."))
 						}
 						break
 					}
 					if !located {
-						info.SetText("Chemin introuvable dans cet instantané. Parcourez les dossiers pour le rechercher.")
+						info.SetText(vaulticT("Chemin introuvable dans cet instantané. Parcourez les dossiers pour le rechercher."))
 					}
 				}
 			})
@@ -180,17 +180,17 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 			}
 			return
 		}
-		run("Recherche dans l’instantané", func(ctx context.Context, opts global.Options) error {
+		run(vaulticT("Recherche dans l’instantané"), func(ctx context.Context, opts global.Options) error {
 			const limit = 1000
 			found, truncated, err := vaulticSearchSnapshot(ctx, opts, snapshot.ID, term, limit)
 			if err != nil {
 				return err
 			}
-			status := fmt.Sprintf("%d résultat(s)", len(found))
+			status := fmt.Sprintf(vaulticT("%d résultat(s)"), len(found))
 			if truncated {
-				status += " affichés · Affinez la recherche"
+				status += vaulticT(" affichés · Affinez la recherche")
 			}
-			fyne.Do(func() { display(found, "Recherche dans tout l’instantané : "+term, status, true) })
+			fyne.Do(func() { display(found, vaulticT("Recherche dans tout l’instantané : ")+term, status, true) })
 			return nil
 		})
 	}
@@ -249,22 +249,22 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 				dialog.ShowError(err, w)
 				return
 			}
-			summary := fmt.Sprintf("%d élément(s) vers :\n%s\n\nLe dossier doit être vide. Les fichiers existants ne seront pas écrasés.\n\n%s",
+			summary := fmt.Sprintf(vaulticT("%d élément(s) vers :\n%s\n\nLe dossier doit être vide. Les fichiers existants ne seront pas écrasés.\n\n%s"),
 				len(items), destination, strings.Join(paths, "\n"))
 			body := container.NewVScroll(vaulticWrappedLabel(summary))
 			body.SetMinSize(fyne.NewSize(320, 155))
-			dialog.NewCustomConfirm("Confirmer la restauration", "Restaurer", "Annuler", body, func(ok bool) {
+			dialog.NewCustomConfirm(vaulticT("Confirmer la restauration"), vaulticT("Restaurer"), vaulticT("Annuler"), body, func(ok bool) {
 				if ok {
-					run("Restauration de la sélection", func(ctx context.Context, opts global.Options) error {
+					run(vaulticT("Restauration de la sélection"), func(ctx context.Context, opts global.Options) error {
 						fyne.Do(func() {
 							if !closed {
-								info.SetText("Restauration en cours…")
+								info.SetText(vaulticT("Restauration en cours…"))
 							}
 						})
 						err := vaulticRestoreSelected(ctx, opts, snapshot.ID, items, destination)
-						status := "Restauration terminée"
+						status := vaulticT("Restauration terminée")
 						if err != nil {
-							status = "Restauration interrompue. Consultez le journal."
+							status = vaulticT("Restauration interrompue. Consultez le journal.")
 						}
 						fyne.Do(func() {
 							if !closed {
@@ -279,8 +279,8 @@ func vaulticOpenExplorerAtPath(app fyne.App, snapshot vaulticSnapshot, run func(
 	}
 	w.SetContent(container.NewBorder(
 		container.NewPadded(container.NewVBox(
-			vaulticHeading("Contenu de l’instantané", 26),
-			container.NewBorder(nil, nil, nil, widget.NewButton("Rechercher", search), query),
+			vaulticHeading(vaulticT("Contenu de l’instantané"), 26),
+			container.NewBorder(nil, nil, nil, widget.NewButton(vaulticT("Rechercher"), search), query),
 			container.NewHScroll(location), info,
 			container.NewHBox(back, open),
 		)),

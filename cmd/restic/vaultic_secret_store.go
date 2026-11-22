@@ -54,7 +54,7 @@ func newVaulticMemorySecretStore() *vaulticMemorySecretStore {
 	return &vaulticMemorySecretStore{secrets: map[string]string{}}
 }
 
-func (m *vaulticMemorySecretStore) Name() string    { return "Mémoire de test" }
+func (m *vaulticMemorySecretStore) Name() string    { return vaulticT("Mémoire de test") }
 func (m *vaulticMemorySecretStore) Available() bool { return !m.unavailable }
 
 func (m *vaulticMemorySecretStore) Get(key string) (string, error) {

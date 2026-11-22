@@ -14,12 +14,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const (
-	vaulticFreqManual  = "Manuel uniquement"
-	vaulticFreqHourly  = "Toutes les N heures"
-	vaulticFreqDaily   = "Tous les jours"
-	vaulticFreqWeekly  = "Chaque semaine"
-	vaulticFreqMonthly = "Chaque mois"
+// These start in French and are rebuilt by vaulticLocalizeTables.
+var (
+	vaulticFreqManual  = vaulticL("Manuel uniquement")
+	vaulticFreqHourly  = vaulticL("Toutes les N heures")
+	vaulticFreqDaily   = vaulticL("Tous les jours")
+	vaulticFreqWeekly  = vaulticL("Chaque semaine")
+	vaulticFreqMonthly = vaulticL("Chaque mois")
 )
 
 var vaulticFrequencyKinds = map[string]string{
@@ -84,19 +85,15 @@ type vaulticAutomationUI struct {
 
 // Display order: Monday first.
 var vaulticWeekdayOrder = []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday, time.Saturday, time.Sunday}
-var vaulticWeekdayShort = map[time.Weekday]string{
-	time.Monday: "Lun", time.Tuesday: "Mar", time.Wednesday: "Mer", time.Thursday: "Jeu",
-	time.Friday: "Ven", time.Saturday: "Sam", time.Sunday: "Dim",
-}
 
 func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 	u := &vaulticAutomationUI{hooks: h}
-	u.enabled = widget.NewCheck("Planification activée pour ce profil", func(bool) { u.controlsChanged() })
+	u.enabled = widget.NewCheck(vaulticT("Planification activée pour ce profil"), func(bool) { u.controlsChanged() })
 	labels := []string{vaulticFreqManual, vaulticFreqHourly, vaulticFreqDaily, vaulticFreqWeekly, vaulticFreqMonthly}
 	u.frequency = widget.NewSelect(labels, func(string) { u.controlsChanged() })
 	u.hours = widget.NewSelect(vaulticHourChoices, func(string) { u.controlsChanged() })
 	u.clock = widget.NewEntry()
-	u.clock.SetPlaceHolder("HH:MM")
+	u.clock.SetPlaceHolder(vaulticT("HH:MM"))
 	u.clock.Validator = func(s string) error { _, _, err := vaulticParseClock(s); return err }
 	u.clock.OnChanged = func(string) { u.controlsChanged() }
 	days := make([]string, 31)
@@ -107,31 +104,31 @@ func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 
 	weekGrid := container.NewGridWithColumns(4) // fixed rows: a wrapping grid under-reports its height inside an accordion
 	for _, day := range vaulticWeekdayOrder {
-		check := widget.NewCheck(vaulticWeekdayShort[day], func(bool) { u.controlsChanged() })
+		check := widget.NewCheck(vaulticWeekdayShortName(day), func(bool) { u.controlsChanged() })
 		u.weekdays[day] = check
 		weekGrid.Add(check)
 	}
-	notifyLabels := []string{"Sauvegarde terminée", "Sauvegarde en échec", "Sauvegarde ignorée", "Sauvegarde en retard"}
+	notifyLabels := []string{vaulticT("Sauvegarde terminée"), vaulticT("Sauvegarde en échec"), vaulticT("Sauvegarde ignorée"), vaulticT("Sauvegarde en retard")}
 	notifyBox := container.NewVBox()
 	for i, label := range notifyLabels {
 		u.notify[i] = widget.NewCheck(label, func(bool) { u.notifyChanged() })
 		notifyBox.Add(u.notify[i])
 	}
 
-	u.hoursRow = labeledRow("Intervalle (heures)", u.hours)
-	u.clockRow = labeledRow("Heure (locale)", u.clock)
-	u.weekRow = labeledRow("Jours de la semaine", weekGrid)
-	u.monthRow = labeledRow("Jour du mois", u.monthDay)
+	u.hoursRow = labeledRow(vaulticT("Intervalle (heures)"), u.hours)
+	u.clockRow = labeledRow(vaulticT("Heure (locale)"), u.clock)
+	u.weekRow = labeledRow(vaulticT("Jours de la semaine"), weekGrid)
+	u.monthRow = labeledRow(vaulticT("Jour du mois"), u.monthDay)
 	advancedBody := container.NewVBox(
 		u.weekRow, u.monthRow,
-		vaulticCaption("Notifications du bureau"), notifyBox,
-		vaulticCaption("Jour 29 à 31 : dernier jour du mois si besoin."),
+		vaulticCaption(vaulticT("Notifications du bureau")), notifyBox,
+		vaulticCaption(vaulticT("Jour 29 à 31 : dernier jour du mois si besoin.")),
 	)
-	u.advanced = widget.NewAccordion(widget.NewAccordionItem("Options avancées", advancedBody))
+	u.advanced = widget.NewAccordion(widget.NewAccordionItem(vaulticT("Options avancées"), advancedBody))
 
-	u.saveButton = widget.NewButtonWithIcon("Enregistrer la planification", theme.DocumentSaveIcon(), u.save)
+	u.saveButton = widget.NewButtonWithIcon(vaulticT("Enregistrer la planification"), theme.DocumentSaveIcon(), u.save)
 	u.saveButton.Importance = widget.HighImportance
-	u.pauseButton = widget.NewButtonWithIcon("Mettre en pause", theme.MediaPauseIcon(), u.togglePause)
+	u.pauseButton = widget.NewButtonWithIcon(vaulticT("Mettre en pause"), theme.MediaPauseIcon(), u.togglePause)
 	u.message = vaulticWrappedLabel("")
 	u.message.Importance = widget.DangerImportance
 
@@ -144,26 +141,26 @@ func newVaulticAutomationUI(h vaulticAutomationHooks) *vaulticAutomationUI {
 	u.historyBox = container.NewVBox()
 
 	status := container.NewVBox(
-		vaulticStatusLine("Fréquence", u.scheduleValue),
-		vaulticStatusLine("Dépôt de destination", u.targetValue),
-		vaulticStatusLine("Prochaine exécution", u.nextValue),
-		vaulticStatusLine("Dernière sauvegarde réussie", u.lastValue),
-		vaulticStatusLine("Activité", u.activityValue),
+		vaulticStatusLine(vaulticT("Fréquence"), u.scheduleValue),
+		vaulticStatusLine(vaulticT("Dépôt de destination"), u.targetValue),
+		vaulticStatusLine(vaulticT("Prochaine exécution"), u.nextValue),
+		vaulticStatusLine(vaulticT("Dernière sauvegarde réussie"), u.lastValue),
+		vaulticStatusLine(vaulticT("Activité"), u.activityValue),
 		u.warning,
 	)
 	form := container.NewVBox(
 		u.enabled,
-		labeledRow("Fréquence", u.frequency),
+		labeledRow(vaulticT("Fréquence"), u.frequency),
 		u.hoursRow, u.clockRow,
 		u.advanced,
 		u.message,
 		container.NewGridWrap(fyne.NewSize(250, 40), u.saveButton, u.pauseButton),
 	)
 	u.Content = container.NewVBox(
-		vaulticSurface(container.NewVBox(vaulticHeading("Automatisation", 20), status)),
-		vaulticSurface(container.NewVBox(vaulticHeading("Planification", 18), form,
-			vaulticWrappedLabel("Le dépôt actif est fixé à cette planification lors de l'enregistrement. Pour choisir un autre dépôt, activez-le dans Dépôts, puis enregistrez la planification. Vaultic doit rester ouvert et le mot de passe du dépôt doit être saisi. Aucun instantané n'est supprimé automatiquement."))),
-		vaulticSurface(container.NewVBox(vaulticHeading("Historique récent", 18), u.historyBox)),
+		vaulticSurface(container.NewVBox(vaulticHeading(vaulticT("Automatisation"), 20), status)),
+		vaulticSurface(container.NewVBox(vaulticHeading(vaulticT("Planification"), 18), form,
+			vaulticWrappedLabel(vaulticT("Le dépôt actif est fixé à cette planification lors de l'enregistrement. Pour choisir un autre dépôt, activez-le dans Dépôts, puis enregistrez la planification. Vaultic doit rester ouvert et le mot de passe du dépôt doit être saisi. Aucun instantané n'est supprimé automatiquement.")))),
+		vaulticSurface(container.NewVBox(vaulticHeading(vaulticT("Historique récent"), 18), u.historyBox)),
 	)
 	u.Load()
 	return u
@@ -304,13 +301,10 @@ func (u *vaulticAutomationUI) togglePause() {
 	u.Refresh()
 }
 
-var vaulticFrenchMonths = [...]string{"", "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."}
-var vaulticFrenchDaysShort = [...]string{"dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."}
-
-// vaulticFormatMoment writes a date in French: "mer. 10 juin 2026 à 14:03".
+// vaulticFormatMoment writes a date in the interface language: "mer. 10 juin 2026 à 14:03".
 func vaulticFormatMoment(t time.Time, loc *time.Location) string {
 	t = t.In(loc)
-	return fmt.Sprintf("%s %d %s %d à %02d:%02d", vaulticFrenchDaysShort[t.Weekday()], t.Day(), vaulticFrenchMonths[t.Month()], t.Year(), t.Hour(), t.Minute())
+	return fmt.Sprintf(vaulticT("%s %d %s %d à %02d:%02d"), vaulticDayShort(t.Weekday()), t.Day(), vaulticMonthShort(t.Month()), t.Year(), t.Hour(), t.Minute())
 }
 
 func vaulticFormatDuration(d time.Duration) string {
@@ -318,11 +312,11 @@ func vaulticFormatDuration(d time.Duration) string {
 	case d < time.Second:
 		return "< 1 s"
 	case d < time.Minute:
-		return fmt.Sprintf("%d s", int(d.Round(time.Second)/time.Second))
+		return fmt.Sprintf(vaulticT("%d s"), int(d.Round(time.Second)/time.Second))
 	case d < time.Hour:
-		return fmt.Sprintf("%d min %02d s", int(d/time.Minute), int(d%time.Minute/time.Second))
+		return fmt.Sprintf(vaulticT("%d min %02d s"), int(d/time.Minute), int(d%time.Minute/time.Second))
 	}
-	return fmt.Sprintf("%d h %02d min", int(d/time.Hour), int(d%time.Hour/time.Minute))
+	return fmt.Sprintf(vaulticT("%d h %02d min"), int(d/time.Hour), int(d%time.Hour/time.Minute))
 }
 
 // vaulticAutomationSummary computes the status texts (separate from widgets so
@@ -349,51 +343,51 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 	if repo != "" {
 		out.Target = vaulticSafeLocation(repo)
 	} else {
-		out.Target = "Aucun dépôt sélectionné"
+		out.Target = vaulticT("Aucun dépôt sélectionné")
 	}
 	switch {
 	case profile.Schedule == nil || profile.Schedule.Kind == "" || profile.Schedule.Kind == vaulticScheduleManual:
-		out.Schedule, out.Next = "Manuel uniquement", "Aucune — lancez la sauvegarde vous-même."
+		out.Schedule, out.Next = vaulticT("Manuel uniquement"), vaulticT("Aucune — lancez la sauvegarde vous-même.")
 	case !profile.Schedule.Enabled:
-		out.Schedule, out.Next = profile.Schedule.Describe()+" (désactivée)", "Aucune — la planification est désactivée."
+		out.Schedule, out.Next = profile.Schedule.Describe()+vaulticT(" (désactivée)"), vaulticT("Aucune — la planification est désactivée.")
 	default:
 		out.Schedule = profile.Schedule.Describe()
 		plan := vaulticPlan(*profile.Schedule, now, loc)
 		switch {
 		case out.Paused:
-			out.Next = "Aucune — la planification est en pause."
+			out.Next = vaulticT("Aucune — la planification est en pause.")
 		case h.Coordinator != nil && h.Coordinator.Overdue(profile.Name):
-			out.Next = "En retard — en attente du mot de passe du dépôt."
+			out.Next = vaulticT("En retard — en attente du mot de passe du dépôt.")
 		case plan.Due:
-			out.Next = "Imminente (au prochain contrôle)."
+			out.Next = vaulticT("Imminente (au prochain contrôle).")
 		case !plan.Next.IsZero():
 			out.Next = vaulticFormatMoment(plan.Next, loc)
 		default:
-			out.Next = "Indéterminée"
+			out.Next = vaulticT("Indéterminée")
 		}
 		if out.Paused {
-			out.Schedule += " — en pause"
+			out.Schedule += vaulticT(" — en pause")
 		}
 	}
 	if last, ok := h.History.LastSuccessForRepository(profile.Name, repo); ok {
-		out.LastSuccess = vaulticFormatMoment(last.Ended, loc) + " · instantané " + shortID(last.SnapshotID)
+		out.LastSuccess = vaulticFormatMoment(last.Ended, loc) + vaulticT(" · instantané ") + shortID(last.SnapshotID)
 	} else {
-		out.LastSuccess = "Aucune sauvegarde réussie enregistrée."
+		out.LastSuccess = vaulticT("Aucune sauvegarde réussie enregistrée.")
 	}
-	out.Activity = "Aucune sauvegarde en cours."
+	out.Activity = vaulticT("Aucune sauvegarde en cours.")
 	if h.Coordinator != nil {
 		if run, active := h.Coordinator.Active(); active {
-			out.Activity = fmt.Sprintf("Sauvegarde %s en cours depuis %s (profil « %s »).",
+			out.Activity = fmt.Sprintf(vaulticT("Sauvegarde %s en cours depuis %s (profil « %s »)."),
 				strings.ToLower(vaulticTriggerLabel(run.Job.Trigger)), vaulticFormatDuration(now.Sub(run.Started)), run.Job.Profile)
 		}
 		if h.Coordinator.Overdue(profile.Name) {
 			if repo != activeRepo {
-				out.Warning = "Une sauvegarde planifiée est en retard : activez le dépôt de destination sur la page Dépôts. Elle ne sera pas considérée comme réalisée."
+				out.Warning = vaulticT("Une sauvegarde planifiée est en retard : activez le dépôt de destination sur la page Dépôts. Elle ne sera pas considérée comme réalisée.")
 			} else if !h.Credentials() {
-				out.Warning = "Une sauvegarde planifiée est en retard : saisissez le mot de passe du dépôt (page Dépôts). Elle ne sera pas considérée comme réalisée."
+				out.Warning = vaulticT("Une sauvegarde planifiée est en retard : saisissez le mot de passe du dépôt (page Dépôts). Elle ne sera pas considérée comme réalisée.")
 			}
 		} else if profile.Schedule != nil && profile.Schedule.Active() && repo != activeRepo {
-			out.Warning = "Le dépôt de destination n'est pas actif. Activez-le sur la page Dépôts avant la prochaine sauvegarde."
+			out.Warning = vaulticT("Le dépôt de destination n'est pas actif. Activez-le sur la page Dépôts avant la prochaine sauvegarde.")
 		}
 	}
 	if profile.Schedule != nil && profile.Schedule.Active() {
@@ -412,7 +406,7 @@ func vaulticSummarize(h vaulticAutomationHooks) vaulticAutomationSummary {
 	}
 	if h.Coordinator != nil {
 		if problem := h.Coordinator.PersistenceProblem(); problem != "" {
-			note := "Enregistrement impossible : " + problem + " Libérez de l'espace ou vérifiez les droits du dossier de configuration."
+			note := vaulticT("Enregistrement impossible : ") + problem + vaulticT(" Libérez de l'espace ou vérifiez les droits du dossier de configuration.")
 			if out.Warning != "" {
 				out.Warning += "\n" + note
 			} else {
@@ -454,10 +448,10 @@ func vaulticHistoryRow(r vaulticRunRecord, loc *time.Location) fyne.CanvasObject
 	if r.Status != vaulticStatusSkipped {
 		details = append(details, vaulticFormatDuration(r.Duration()))
 		if r.Files > 0 {
-			details = append(details, fmt.Sprintf("%d fichier(s)", r.Files), vaulticBytes(r.Bytes))
+			details = append(details, fmt.Sprintf(vaulticT("%d fichier(s)"), r.Files), vaulticBytes(r.Bytes))
 		}
 		if r.SnapshotID != "" {
-			details = append(details, "instantané "+shortID(r.SnapshotID))
+			details = append(details, vaulticT("instantané ")+shortID(r.SnapshotID))
 		}
 	}
 	lines := []fyne.CanvasObject{container.NewHBox(head, when), vaulticWrappedLabel(strings.Join(details, " · "))}
@@ -482,10 +476,10 @@ func (u *vaulticAutomationUI) Refresh() {
 		u.warning.Show()
 	}
 	if sum.Paused {
-		u.pauseButton.SetText("Reprendre la planification")
+		u.pauseButton.SetText(vaulticT("Reprendre la planification"))
 		u.pauseButton.SetIcon(theme.MediaPlayIcon())
 	} else {
-		u.pauseButton.SetText("Mettre en pause")
+		u.pauseButton.SetText(vaulticT("Mettre en pause"))
 		u.pauseButton.SetIcon(theme.MediaPauseIcon())
 	}
 	records := u.hooks.History.RecentForRepository(u.hooks.Profile().Name, sum.Repository, 8)
@@ -495,7 +489,7 @@ func (u *vaulticAutomationUI) Refresh() {
 		rows = append(rows, vaulticHistoryRow(r, loc))
 	}
 	if len(rows) == 0 {
-		rows = append(rows, vaulticWrappedLabel("Aucune exécution enregistrée pour ce profil."))
+		rows = append(rows, vaulticWrappedLabel(vaulticT("Aucune exécution enregistrée pour ce profil.")))
 	}
 	u.historyBox.Objects = rows
 	u.historyBox.Refresh()
