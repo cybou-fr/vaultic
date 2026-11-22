@@ -75,7 +75,7 @@ func TestVaulticPageBuildersAndNavigation(t *testing.T) {
 	newAutomationFixture(t) // initialises a Fyne test application
 	pages := make([]fyne.CanvasObject, 8)
 	for i := range pages {
-		pages[i] = vaulticSettingsPage(widget.NewLabel("x"), widget.NewLabel("y"))
+		pages[i] = vaulticSettingsPage(widget.NewLabel("x"), widget.NewLabel("y"), widget.NewLabel("z"))
 	}
 	nav := vaulticNewNavigation(pages)
 	if len(nav.buttons) != len(vaulticNavLabels) || len(pages) != len(vaulticNavLabels) {

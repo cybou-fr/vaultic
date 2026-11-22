@@ -207,7 +207,7 @@ func vaulticActivityPage(logs fyne.CanvasObject, clear func()) fyne.CanvasObject
 	)
 }
 
-func vaulticSettingsPage(background, language fyne.CanvasObject) *container.Scroll {
+func vaulticSettingsPage(background, language, update fyne.CanvasObject) *container.Scroll {
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
 		vaulticHeading(vaulticT("Paramètres"), 26),
 		vaulticSurface(container.NewVBox(
@@ -222,7 +222,9 @@ func vaulticSettingsPage(background, language fyne.CanvasObject) *container.Scro
 			vaulticHeading(vaulticT("À propos de Vaultic"), 19),
 			vaulticWrappedLabel(vaulticT("Les dépôts Vaultic utilisent le format restic.")),
 			vaulticWrappedLabel(vaulticT("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic).")),
+			widget.NewLabel("Vaultic "+vaulticVersionLine()),
 			widget.NewLabel(vaulticT("Moteur intégré — ")+global.Version),
+			update,
 		)),
 	)))
 }

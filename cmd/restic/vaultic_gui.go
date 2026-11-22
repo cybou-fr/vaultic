@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -494,7 +495,15 @@ func vaulticMain(startHidden bool) {
 		Window: w, Settings: &saved,
 		Persist: func() error { return persist(saved.Depots, repos.Active()) },
 	})
-	settingsPage := vaulticSettingsPage(background.Content, languageUI.Content)
+	updateUI := newVaulticUpdateController(vaulticUpdateHooks{
+		API: vaulticReleasesAPI, Current: vaulticVersion,
+		Open: func(page string) {
+			if u, err := url.Parse(page); err == nil {
+				_ = a.OpenURL(u)
+			}
+		},
+	})
+	settingsPage := vaulticSettingsPage(background.Content, languageUI.Content, updateUI.Content)
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
 	stopFocusFollow = vaulticKeepFocusVisible(w, append([]*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage}, backupScrolls...))

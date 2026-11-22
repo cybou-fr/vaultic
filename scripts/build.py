@@ -16,6 +16,16 @@ def run(*args):
     print("+", " ".join(str(v) for v in args), flush=True)
     subprocess.run([str(a) for a in args], cwd=ROOT, check=True)
 
+def git_commit():
+    """Short commit hash, with -dirty when the tree has uncommitted changes; "" outside a checkout."""
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+        dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    return commit + ("-dirty" if dirty else "")
+
+
 def build():
     for required in ("go.mod", "cmd/restic/main.go", "cmd/restic/vaultic_gui.go",
                      "internal/repository", "LICENSE.restic"):
@@ -24,7 +34,10 @@ def build():
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     binary = output / ("vaultic.exe" if sys.platform == "win32" else "vaultic")
+    version = (ROOT / "VAULTIC_VERSION").read_text(encoding="utf-8").strip()
+    commit = git_commit()
     ldflags = "-s -w -H windowsgui" if sys.platform == "win32" else "-s -w"
+    ldflags += f" -X main.vaulticVersion={version} -X main.vaulticCommit={commit}"
     run("go", "build", "-mod=readonly", "-ldflags", ldflags, "-o", binary, "./cmd/restic")
     for name in ("LICENSE", "LICENSE.restic", "NOTICE", "THIRD_PARTY_NOTICES.md"):
         shutil.copy2(ROOT / name, output / name)

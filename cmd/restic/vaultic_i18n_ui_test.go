@@ -157,7 +157,7 @@ func TestVaulticEnglishInterfaceShowsNoFrenchOnItsMainScreens(t *testing.T) {
 
 	t.Run("static pages and navigation", func(t *testing.T) {
 		var texts []string
-		textsOf(vaulticSettingsPage(widget.NewLabel("x"), widget.NewLabel("y")), &texts)
+		textsOf(vaulticSettingsPage(widget.NewLabel("x"), widget.NewLabel("y"), widget.NewLabel("z")), &texts)
 		textsOf(vaulticIntegrityPage(widget.NewButton("c", nil)), &texts)
 		textsOf(vaulticActivityPage(widget.NewLabel("l"), func() {}), &texts)
 		nav := vaulticNewNavigation(make([]fyne.CanvasObject, 8))

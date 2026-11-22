@@ -96,7 +96,17 @@ other scales, skip-navigation shortcut to jump past the sidebar.
 - [ ] Dependency review and local vulnerability scan.
 - [ ] Stop tracking `portable.flag` at the repository root.
 
-## Stage 5 — Distribution
+## Stage 5 — Distribution (partly implemented, 2026-11-22)
+
+Done: dependency vulnerabilities fixed (govulncheck now reports none that
+affect the code; six modules upgraded); version and commit compiled in and
+shown in Settings; manual, anonymous update check (verified against the real
+GitHub API: no release published yet); `scripts/package.py` producing the
+standard and portable archives with checksums (the portable archive was
+extracted and started); `docs/RELEASE.md`.
+Not verified: the Inno Setup installer (`installer/vaultic.iss`, Inno Setup
+is not installed), code signing (no certificate), and any Linux or macOS
+build: WSL Ubuntu has gcc but neither Go nor the Fyne development packages.
 
 - [ ] Build and verify on Linux and macOS.
 - [ ] Windows installer, code signing, version shown in the About page.
