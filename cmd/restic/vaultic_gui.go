@@ -185,6 +185,7 @@ func vaulticMain(startHidden bool) {
 	vaulticPrepareLoadedSettings(&saved)
 	var snapshots *vaulticSnapshotsController
 	var profiles *vaulticProfilesController
+	var retention *vaulticRetentionController
 	recentRunValue := widget.NewLabelWithStyle("Aucune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	recentRunValue.Truncation = fyne.TextTruncateEllipsis
 	var maintenance *vaulticMaintenanceController
@@ -288,6 +289,9 @@ func vaulticMain(startHidden bool) {
 		Activated: func() {
 			snapshots.Clear()
 			maintenance.Reset()
+			if retention != nil {
+				retention.invalidate()
+			}
 		},
 	})
 
@@ -300,6 +304,9 @@ func vaulticMain(startHidden bool) {
 		Changed: func() {
 			if automationUI != nil {
 				automationUI.Load()
+			}
+			if retention != nil {
+				retention.Load()
 			}
 		},
 		Renamed: func(oldName, newName string) {
@@ -367,6 +374,7 @@ func vaulticMain(startHidden bool) {
 		vaulticSetButtonEnabled(profiles.Duplicate, !busy.Load())
 		vaulticSetButtonEnabled(profiles.Delete, !busy.Load() && len(saved.Profiles) > 1)
 		maintenance.UpdateState(busy.Load(), repos.Active() != "")
+		retention.UpdateState(busy.Load(), repos.Active() != "", len(profiles.Sources()) > 0)
 		vaulticSetButtonEnabled(profiles.RemoveSource, !busy.Load() && profiles.Selected() >= 0)
 		repos.UpdateState(busy.Load())
 		if busy.Load() {
@@ -430,11 +438,31 @@ func vaulticMain(startHidden bool) {
 		Credentials:      func() bool { return repos.Password.Text != "" },
 		Location:         func() *time.Location { return time.Local },
 	})
-	backupPage, automationScroll := vaulticBackupPage(vaulticBackupParts{
+	retention = newVaulticRetentionController(vaulticRetentionHooks{
+		Window:  w,
+		Profile: func() vaulticBackupProfile { return profiles.Current() },
+		SaveRetention: func(policy vaulticRetention) error {
+			next := append([]vaulticBackupProfile(nil), saved.Profiles...)
+			next[profiles.Index()].Retention = &policy
+			if !profiles.Apply(next, profiles.Index()) {
+				return errors.New("Enregistrement impossible : consultez le message affiché.")
+			}
+			return nil
+		},
+		Repository: func() string { return repos.Active() },
+		Run: func(title string, fn func(context.Context, global.Options) error, finish func() error) {
+			runner.Run(title, repos.Active(), repos.Password.Text, vaulticRunOptions{}, fn, finish)
+		},
+		History:       historyStore,
+		Log:           appendLog,
+		UpdateActions: func() { updateActions() },
+	})
+	backupPage, backupScrolls := vaulticBackupPage(vaulticBackupParts{
 		Profile: profiles.Select, NewProfile: profiles.New, RenameProfile: profiles.Rename,
 		DuplicateProfile: profiles.Duplicate, DeleteProfile: profiles.Delete,
 		Exclusions: profiles.Exclusions, PreviewExclusions: profiles.Preview, ExclusionSummary: profiles.ExclusionSummary,
 		Sources: profiles.Section, BackupNow: backup.BackupButton, LastReport: backup.ReportButton,
+		Retention: retention.Content,
 	}, automationUI.Content)
 	snapshotPage := vaulticSnapshotPage(vaulticSnapshotParts{
 		Refresh: snapshots.Refresh, Details: snapshots.DetailsScroll,
@@ -460,7 +488,7 @@ func vaulticMain(startHidden bool) {
 	settingsPage := vaulticSettingsPage(background.Content)
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
-	stopFocusFollow = vaulticKeepFocusVisible(w, []*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage, automationScroll})
+	stopFocusFollow = vaulticKeepFocusVisible(w, append([]*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage}, backupScrolls...))
 	nav := vaulticNewNavigation(pages)
 	navigate := nav.Navigate
 	setupButton.OnTapped = func() { navigate(vaulticPageRepositories) }

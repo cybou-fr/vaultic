@@ -16,6 +16,7 @@ import (
 const (
 	vaulticTriggerManual    = "manual"
 	vaulticTriggerScheduled = "scheduled"
+	vaulticTriggerRetention = "retention"
 
 	vaulticStatusSuccess   = "success"
 	vaulticStatusFailure   = "failure"
@@ -67,6 +68,9 @@ func vaulticStatusLabel(status string) string {
 func vaulticTriggerLabel(trigger string) string {
 	if trigger == vaulticTriggerScheduled {
 		return "Planifiée"
+	}
+	if trigger == vaulticTriggerRetention {
+		return "Conservation"
 	}
 	return "Manuelle"
 }

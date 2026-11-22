@@ -100,12 +100,14 @@ type vaulticBackupParts struct {
 	ExclusionSummary                fyne.CanvasObject
 	Sources                         fyne.CanvasObject // already framed source section
 	BackupNow, LastReport           fyne.CanvasObject
+	Retention                       fyne.CanvasObject
 }
 
 // vaulticBackupPage returns the page and the scroll container of the
 // Automatisation tab, which needs focus-following.
-func vaulticBackupPage(p vaulticBackupParts, automationContent fyne.CanvasObject) (page fyne.CanvasObject, automationScroll *container.Scroll) {
-	automationScroll = container.NewScroll(container.NewPadded(automationContent))
+func vaulticBackupPage(p vaulticBackupParts, automationContent fyne.CanvasObject) (page fyne.CanvasObject, scrolls []*container.Scroll) {
+	automationScroll := container.NewScroll(container.NewPadded(automationContent))
+	retentionScroll := container.NewScroll(container.NewPadded(p.Retention))
 	tabs := container.NewAppTabs(
 		container.NewTabItemWithIcon("Lancement", theme.MediaPlayIcon(), container.NewVScroll(container.NewBorder(
 			container.NewPadded(container.NewVBox(
@@ -121,6 +123,7 @@ func vaulticBackupPage(p vaulticBackupParts, automationContent fyne.CanvasObject
 			container.NewPadded(vaulticSurface(p.Sources)),
 		))),
 		container.NewTabItemWithIcon("Automatisation", theme.HistoryIcon(), automationScroll),
+		container.NewTabItemWithIcon("Conservation", theme.DeleteIcon(), retentionScroll),
 	)
 	page = container.NewBorder(
 		container.NewPadded(container.NewVBox(
@@ -131,7 +134,7 @@ func vaulticBackupPage(p vaulticBackupParts, automationContent fyne.CanvasObject
 		nil, nil, nil,
 		tabs,
 	)
-	return page, automationScroll
+	return page, []*container.Scroll{automationScroll, retentionScroll}
 }
 
 type vaulticSnapshotParts struct {

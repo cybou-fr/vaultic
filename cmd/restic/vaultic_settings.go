@@ -44,6 +44,9 @@ type vaulticBackupProfile struct {
 	Sources  []string         `json:"sources"`
 	Excludes []string         `json:"excludes,omitempty"`
 	Schedule *vaulticSchedule `json:"schedule,omitempty"`
+	// Retention is the profile's conservation policy. It only describes what
+	// may be deleted later, after a preview and a confirmation.
+	Retention *vaulticRetention `json:"retention,omitempty"`
 }
 
 func (s *vaulticSettings) migrateBackupProfiles() int {

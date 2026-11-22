@@ -58,7 +58,18 @@ window, and everything on Linux/macOS.
 - Acceptance: after a reboot a scheduled backup runs without typing the
   password (only if the user allowed storing it) and shows in the history.
 
-## Stage 3 — Retention
+## Stage 3 — Retention (implemented, 2026-11-22)
+
+Done: per-profile policy; preview that is the only input of the deletion
+step; re-check against the repository right before deleting (only a subset
+of what was previewed can ever be removed); only the profile's own
+snapshots (same host and sources); newest snapshot always kept; complete
+snapshot IDs only; separate prune step; history entries; a test that no
+other code can reach forget/prune. Verified on real repositories (tests)
+and in the real window (preview, cancel, delete, prune, check).
+Not done: deleting for snapshots made with other sources or other hosts
+(deliberately out of scope), tags and "within" rules, a prune dry-run
+estimate.
 
 - [ ] "Retention" tab: keep last N / daily / weekly / monthly rules.
 - [ ] Mandatory preview of what would be deleted, explicit confirmation,

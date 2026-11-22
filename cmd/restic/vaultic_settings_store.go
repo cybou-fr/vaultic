@@ -35,7 +35,7 @@ func vaulticSettingsForSave(saved vaulticSettings, depots []vaulticDepot, active
 		}
 		stored[i] = vaulticBackupProfile{
 			Name: profile.Name, Sources: storedSources, Excludes: append([]string(nil), profile.Excludes...),
-			Schedule: vaulticCloneSchedule(profile.Schedule),
+			Schedule: vaulticCloneSchedule(profile.Schedule), Retention: vaulticCloneRetention(profile.Retention),
 		}
 	}
 	return vaulticSettings{
