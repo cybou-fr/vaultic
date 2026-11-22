@@ -29,17 +29,21 @@ shown in Settings → About) and writes to `dist/release/`:
 The script re-opens each archive and checks that the executable and licences
 are present and that only the portable archive carries `portable.flag`.
 
-## 3. Windows installer (not verified)
+## 3. Windows installer
 
 `installer/vaultic.iss` is an Inno Setup script for a per-user installer (no
 administrator rights; it never deletes settings or stored passwords when
-uninstalling). Inno Setup is not installed on the development machine, so the
-script has **never been built or run**. Before publishing an installer:
+uninstalling). `py scripts/package.py` builds it when Inno Setup is installed
+(`vaultic-<version>-windows-amd64-setup.exe`, included in `SHA256SUMS.txt`);
+`--no-installer` skips it.
 
-1. Install Inno Setup, run `iscc installer\vaultic.iss`.
-2. Install and uninstall it on a clean Windows machine and confirm that
-   Vaultic starts, the Start Menu entry works and settings survive an
-   uninstall.
+Verified on the development machine (Inno Setup 7.1.1): a silent install into
+a temporary folder (`/VERYSILENT /DIR=...`) put the program and licences there,
+registered "Vaultic 0.5.0 / Stanislav SAVELIEV" in the user's uninstall list and
+created a Start Menu shortcut; the installed program started; a silent
+uninstall removed the files, the uninstall entry and the shortcut. Still to do
+before publishing: try it on a clean machine (another user account or a virtual
+machine) and in French.
 
 ## 4. Signing (not verified)
 

@@ -35,6 +35,10 @@ def build():
     output.mkdir(exist_ok=True)
     binary = output / ("vaultic.exe" if sys.platform == "win32" else "vaultic")
     version = (ROOT / "VAULTIC_VERSION").read_text(encoding="utf-8").strip()
+    if sys.platform == "win32":
+        # Keep the version shown in Explorer's Properties in step with
+        # VAULTIC_VERSION. Without windres the committed resource is used as is.
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "make-icon.py"), "--resources-only"], cwd=ROOT, check=False)
     commit = git_commit()
     ldflags = "-s -w -H windowsgui" if sys.platform == "win32" else "-s -w"
     ldflags += f" -X main.vaulticVersion={version} -X main.vaulticCommit={commit}"

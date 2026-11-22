@@ -19,6 +19,9 @@ var (
 	vaulticCommit  = ""
 )
 
+// vaulticAuthor is shown in the About section.
+const vaulticAuthor = "Stanislav SAVELIEV"
+
 // vaulticVersionLine is the text shown in the About section.
 func vaulticVersionLine() string {
 	line := vaulticVersion

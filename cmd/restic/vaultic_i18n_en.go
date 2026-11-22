@@ -160,6 +160,7 @@ var vaulticEnglish = map[string]string{
 	"Aucune — la planification est désactivée.":                                                       "None — the schedule is disabled.",
 	"Aucune — la planification est en pause.":                                                         "None — the schedule is paused.",
 	"Aucune — lancez la sauvegarde vous-même.":                                                        "None — start the backup yourself.",
+	"Auteur : ":        "Author: ",
 	"Authentification": "Authentication",
 	"Authentification : Application Default Credentials de Google.":                 "Authentication: Google Application Default Credentials.",
 	"Authentification par clé SSH déjà configurée (ssh-agent).":                     "SSH key authentication already configured (ssh-agent).",

@@ -1,9 +1,7 @@
 ; Inno Setup script for the Windows installer (https://jrsoftware.org/isinfo.php).
 ;
-; NOT BUILT OR TESTED in this repository: Inno Setup is not installed on the
-; development machine. Build it by hand with "iscc installer\vaultic.iss"
-; after "py scripts/build.py", then test the installer on a clean machine
-; before publishing it.
+; Build:   py scripts/build.py   then   iscc installer\vaultic.iss
+; Output:  dist\release\vaultic-<version>-windows-amd64-setup.exe
 ;
 ; Design: a per-user install (no administrator rights), program files only.
 ; Settings, history and passwords stay in the user's profile and in the
@@ -16,16 +14,22 @@
 AppId={{B5E2C6C0-7A1E-4C57-9B0B-6F6C0B7E3A11}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Vaultic
+AppPublisher=Stanislav SAVELIEV
+AppPublisherURL=https://github.com/cybou-fr/vaultic
+AppCopyright=Copyright 2026 Stanislav SAVELIEV
+VersionInfoVersion={#AppVersion}
 DefaultDirName={localappdata}\Programs\Vaultic
 DefaultGroupName=Vaultic
 PrivilegesRequired=lowest
 OutputDir=..\dist\release
 OutputBaseFilename=vaultic-{#AppVersion}-windows-amd64-setup
+SetupIconFile=..\assets\vaultic.ico
+UninstallDisplayIcon={app}\vaultic.exe
+LicenseFile=..\LICENSE
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
-UninstallDisplayIcon={app}\vaultic.exe
+WizardStyle=modern
 ; Signing is optional: configure a SignTool in the Inno IDE and add
 ; "SignTool=mysigner" here when a code-signing certificate is available.
 

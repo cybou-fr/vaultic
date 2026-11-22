@@ -8,7 +8,8 @@
 Output, in dist/release/:
     vaultic-<version>-<os>-<arch>.zip            installed-style package (settings in the user profile)
     vaultic-<version>-<os>-<arch>-portable.zip   portable package (settings next to the program)
-    SHA256SUMS.txt                               checksums of both archives
+    vaultic-<version>-windows-amd64-setup.exe    Windows installer (when Inno Setup is installed)
+    SHA256SUMS.txt                               checksums of every file above
 
 The version comes from VAULTIC_VERSION. Signing is optional and only runs when
 --sign-command is given; the command is run on the executable before it is
@@ -16,6 +17,7 @@ archived, with {file} replaced by its path. The signing step is not exercised
 by the repository's own checks, because it needs a code-signing certificate.
 """
 import argparse
+import glob
 import hashlib
 import platform
 import shutil
@@ -37,6 +39,18 @@ def target():
     machine = platform.machine().lower()
     arch = {"amd64": "amd64", "x86_64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(machine, machine)
     return system, arch
+
+
+def find_iscc():
+    """Inno Setup compiler, from PATH or the usual install folders."""
+    found = shutil.which("iscc") or shutil.which("ISCC")
+    if found:
+        return found
+    for pattern in (r"C:\Program Files\Inno Setup *\ISCC.exe", r"C:\Program Files (x86)\Inno Setup *\ISCC.exe"):
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            return matches[-1]
+    return None
 
 
 def sha256(path):
@@ -76,6 +90,7 @@ def verify_zip(path, portable, exe_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--no-installer", action="store_true", help="do not build the Inno Setup installer")
     parser.add_argument("--sign-command", help="command run on the executable; {file} is replaced by its path")
     args = parser.parse_args()
 
@@ -106,6 +121,18 @@ def main():
         make_zip(path, folder, files, portable)
         verify_zip(path, portable, exe_name)
         archives.append(path)
+
+    if system == "windows" and not args.no_installer:
+        iscc = find_iscc()
+        if iscc:
+            print("+", iscc, "installer/vaultic.iss", flush=True)
+            subprocess.run([iscc, str(ROOT / "installer" / "vaultic.iss")], cwd=ROOT, check=True)
+            setup = out / f"vaultic-{version}-windows-amd64-setup.exe"
+            if not setup.is_file():
+                raise SystemExit(f"{setup.name} was not produced")
+            archives.append(setup)
+        else:
+            print("Inno Setup not found: no installer built")
 
     (out / "SHA256SUMS.txt").write_text("".join(f"{sha256(p)}  {p.name}\n" for p in archives), encoding="utf-8")
     print(f"Vaultic {version} ({system}/{arch})")

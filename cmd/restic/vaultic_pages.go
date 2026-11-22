@@ -223,6 +223,7 @@ func vaulticSettingsPage(background, language, update fyne.CanvasObject) *contai
 			vaulticWrappedLabel(vaulticT("Les dépôts Vaultic utilisent le format restic.")),
 			vaulticWrappedLabel(vaulticT("Licence Apache-2.0 (Vaultic), BSD-2-Clause (restic).")),
 			widget.NewLabel("Vaultic "+vaulticVersionLine()),
+			widget.NewLabel(vaulticT("Auteur : ")+vaulticAuthor),
 			widget.NewLabel(vaulticT("Moteur intégré — ")+global.Version),
 			update,
 		)),

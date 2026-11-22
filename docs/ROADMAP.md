@@ -104,9 +104,13 @@ shown in Settings; manual, anonymous update check (verified against the real
 GitHub API: no release published yet); `scripts/package.py` producing the
 standard and portable archives with checksums (the portable archive was
 extracted and started); `docs/RELEASE.md`.
-Not verified: the Inno Setup installer (`installer/vaultic.iss`, Inno Setup
-is not installed), code signing (no certificate), and any Linux or macOS
-build: WSL Ubuntu has gcc but neither Go nor the Fyne development packages.
+Also done: the executable now carries the application icon and version
+information (`scripts/make-icon.py`, `assets/`), the About page names the
+author, and the Inno Setup installer was built and tested (silent install, run,
+uninstall) with Inno Setup 7.1.1.
+Not verified: installation on a clean machine, code signing (no certificate),
+and any Linux or macOS build: WSL Ubuntu has gcc but neither Go nor the Fyne
+development packages.
 
 - [ ] Build and verify on Linux and macOS.
 - [ ] Windows installer, code signing, version shown in the About page.
