@@ -9,6 +9,8 @@
 
 #define AppName "Vaultic"
 #define AppVersion Trim(FileRead(FileOpen("..\VAULTIC_VERSION")))
+; Windows version resources only accept numbers: "0.6.0-beta" becomes "0.6.0".
+#define AppNumeric Copy(AppVersion, 1, Pos("-", AppVersion + "-") - 1)
 
 [Setup]
 AppId={{B5E2C6C0-7A1E-4C57-9B0B-6F6C0B7E3A11}
@@ -17,7 +19,7 @@ AppVersion={#AppVersion}
 AppPublisher=Stanislav SAVELIEV
 AppPublisherURL=https://github.com/cybou-fr/vaultic
 AppCopyright=Copyright 2026 Stanislav SAVELIEV
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#AppNumeric}
 DefaultDirName={localappdata}\Programs\Vaultic
 DefaultGroupName=Vaultic
 PrivilegesRequired=lowest

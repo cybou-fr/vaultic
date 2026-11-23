@@ -18,7 +18,8 @@ func TestVaulticVersionComparison(t *testing.T) {
 	}{
 		{"v0.6.0", "0.5.0", true}, {"0.5.1", "0.5.0", true}, {"v1.0.0", "0.99.99", true},
 		{"v0.5.0", "0.5.0", false}, {"v0.4.9", "0.5.0", false}, {"0.5.0-rc1", "0.5.0", false},
-		{"v0.10.0", "0.9.0", true}, // numbers, not text
+		{"v0.10.0", "0.9.0", true},                                                                            // numbers, not text
+		{"v0.6.0", "0.6.0-beta", true}, {"v0.6.0-beta", "0.6.0", false}, {"v0.6.0-beta", "0.6.0-beta", false}, // the final release follows its beta
 		{"v0.6.0", "dev", false}, {"latest", "0.5.0", false}, {"", "0.5.0", false}, {"1.2.3.4", "0.5.0", false},
 	}
 	for _, c := range cases {

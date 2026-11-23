@@ -71,7 +71,14 @@ func vaulticNewerVersion(candidate, current string) bool {
 			return c[i] > cur[i]
 		}
 	}
-	return false
+	// 0.6.0 is newer than 0.6.0-beta: the final release follows its pre-releases.
+	return vaulticIsPrerelease(current) && !vaulticIsPrerelease(candidate)
+}
+
+// vaulticIsPrerelease reports whether a version carries a "-beta"/"-rc1" suffix.
+func vaulticIsPrerelease(text string) bool {
+	text = strings.TrimPrefix(strings.TrimSpace(text), "v")
+	return strings.Contains(text, "-")
 }
 
 // vaulticUpdateResult is the answer of the manual update check.
