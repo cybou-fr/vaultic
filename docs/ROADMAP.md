@@ -128,3 +128,5 @@ several repositories per profile (3-2-1).
 - Stage 6 (item 2): live round-trip tests against SeaweedFS (S3), rest-server and Azurite; fixed the empty Azure access-tier header. See docs/LIVE_TESTS.md.
 
 - Stage 6 (item 3): 40-minute in-process soak test (807 backups, 201 exact restores, 80 prune/check), no leak. See docs/SOAK.md.
+
+- Stage 6 (item 4): install checks (silent setup/uninstall, portable zip, DLL imports); zips now carry LICENSE.fyne. Clean-machine test still open. See docs/INSTALL_TEST.md.
