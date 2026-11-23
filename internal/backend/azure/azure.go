@@ -284,8 +284,12 @@ func (be *Backend) saveSingleBlob(ctx context.Context, objName string, rd backen
 
 	reader := bytes.NewReader(buf)
 	opts := &blockblob.UploadOptions{
-		Tier:                    &accessTier,
 		TransactionalValidation: blob.TransferValidationTypeMD5(rd.Hash()),
+	}
+	if accessTier != "" {
+		// An empty tier would send an empty x-ms-access-tier header, which
+		// Azure ignores but emulators such as Azurite reject.
+		opts.Tier = &accessTier
 	}
 
 	debug.Log("Upload single blob %v with %d bytes", objName, len(buf))
@@ -340,9 +344,11 @@ func (be *Backend) saveLarge(ctx context.Context, objName string, rd backend.Rew
 		return errors.Errorf("wrote %d bytes instead of the expected %d bytes", uploadedBytes, rd.Length())
 	}
 
-	_, err := blockBlobClient.CommitBlockList(ctx, blocks, &blockblob.CommitBlockListOptions{
-		Tier: &accessTier,
-	})
+	commitOpts := &blockblob.CommitBlockListOptions{}
+	if accessTier != "" {
+		commitOpts.Tier = &accessTier
+	}
+	_, err := blockBlobClient.CommitBlockList(ctx, blocks, commitOpts)
 
 	debug.Log("uploaded %d parts: %v", len(blocks), blocks)
 	return errors.Wrap(err, "CommitBlockList")

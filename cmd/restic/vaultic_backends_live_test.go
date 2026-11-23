@@ -5,7 +5,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/restic/restic/internal/global"
 )
@@ -22,6 +25,8 @@ import (
 //	VAULTIC_LIVE_REST      rest:http://127.0.0.1:8000/vaultic-test
 //	VAULTIC_LIVE_AZURE     azure:container:/vaultic-test
 //	VAULTIC_LIVE_AZURE_ACCOUNT / VAULTIC_LIVE_AZURE_KEY
+//	VAULTIC_LIVE_AZURE_SUFFIX  endpoint suffix of an emulator (e.g. localhost:10000)
+//	VAULTIC_LIVE_CACERT        root certificate file to trust (emulators with a self-signed certificate)
 //	VAULTIC_LIVE_GS        gs:bucket:/vaultic-test
 //	VAULTIC_LIVE_GS_PROJECT project id (credentials come from the environment)
 //
@@ -62,6 +67,9 @@ func liveTargets() []liveTarget {
 func (l liveTarget) options(password string) global.Options {
 	opts := e2eOptions(l.address, password)
 	opts.Backends = vaulticBackendsForSession(l.auth)
+	if ca := os.Getenv("VAULTIC_LIVE_CACERT"); ca != "" {
+		opts.RootCertFilenames = []string{ca}
+	}
 	return opts
 }
 
@@ -72,12 +80,17 @@ func TestVaulticLiveBackendsRoundTrip(t *testing.T) {
 	}
 	for _, target := range targets {
 		t.Run(target.name, func(t *testing.T) {
+			if suffix := os.Getenv("VAULTIC_LIVE_AZURE_SUFFIX"); suffix != "" && target.auth.Scheme == "azure" {
+				// The Azure backend only reads an emulator's host from the
+				// environment; this is confined to the test, never the application.
+				t.Setenv("AZURE_ENDPOINT_SUFFIX", suffix)
+			}
 			tree := filepath.Join(t.TempDir(), "arbre-e2e")
 			e2eBuildTree(t, tree)
 			want := e2eSnapshotTree(t, tree)
 
 			// A unique repository path per run keeps the target reusable.
-			target.address = target.address + "-" + filepath.Base(t.TempDir())
+			target.address = target.address + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 			ctx := context.Background()
 			var out bytes.Buffer
 			term := &vaulticTerminal{output: &out}
@@ -88,13 +101,17 @@ func TestVaulticLiveBackendsRoundTrip(t *testing.T) {
 			}
 
 			// Probe: the repository opens with the right password, and a wrong
-			// password is a distinct failure, never a connection.
-			if res := vaulticProbeRedacted(ctx, opts, vaulticProbeTimeout, target.auth, vaulticVerifyDepot); res.State != vaulticConnConnected {
-				t.Fatalf("probe with the right password: %+v", res)
-			}
-			wrong := target.options("mauvais-mot-de-passe")
-			if res := vaulticProbeRedacted(ctx, wrong, vaulticProbeTimeout, target.auth, vaulticVerifyDepot); res.State != vaulticConnAuthFailed {
-				t.Fatalf("probe with a wrong password: %+v", res)
+			// password is a distinct failure, never a connection. The probe has
+			// its own transport that trusts the system certificates only, so it
+			// is skipped for an emulator with a self-signed certificate.
+			if os.Getenv("VAULTIC_LIVE_CACERT") == "" {
+				if res := vaulticProbeRedacted(ctx, opts, vaulticProbeTimeout, target.auth, vaulticVerifyDepot); res.State != vaulticConnConnected {
+					t.Fatalf("probe with the right password: %+v", res)
+				}
+				wrong := target.options("mauvais-mot-de-passe")
+				if res := vaulticProbeRedacted(ctx, wrong, vaulticProbeTimeout, target.auth, vaulticVerifyDepot); res.State != vaulticConnAuthFailed {
+					t.Fatalf("probe with a wrong password: %+v", res)
+				}
 			}
 
 			exec := vaulticBackupExecutor(opts, []string{tree}, nil, func(report *vaulticBackupReport, line string) { vaulticRecordLine(report, line) })
@@ -122,5 +139,36 @@ func TestVaulticLiveBackendsRoundTrip(t *testing.T) {
 				t.Fatalf("check on %s: %v\n%s", target.name, err, out.String())
 			}
 		})
+	}
+}
+
+// A wrong access key or secret must be reported as an authentication problem
+// (not "unreachable", not "connected"), and the message must not echo it.
+func TestVaulticLiveWrongCredentialsAreAuthFailures(t *testing.T) {
+	var s3 *liveTarget
+	for _, target := range liveTargets() {
+		if target.name == "s3" {
+			s3 = &target
+		}
+	}
+	if s3 == nil {
+		t.Skip("no live S3 backend configured")
+	}
+	s3.address += "-cred-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	ctx := context.Background()
+	good := s3.options(e2ePassword)
+	var out bytes.Buffer
+	good.Term = &vaulticTerminal{output: &out}
+	if err := runInit(ctx, InitOptions{RepositoryVersion: "stable"}, good, nil, good.Term); err != nil {
+		t.Fatal(err)
+	}
+	bad := *s3
+	bad.auth.Secret = "mauvais-secret-0123456789"
+	res := vaulticProbeRedacted(ctx, bad.options(e2ePassword), vaulticProbeTimeout, bad.auth, vaulticVerifyDepot)
+	if res.State != vaulticConnAuthFailed {
+		t.Fatalf("a wrong secret key must be an authentication failure: %+v", res)
+	}
+	if strings.Contains(res.Detail, bad.auth.Secret) {
+		t.Fatalf("the secret key leaked into the message: %q", res.Detail)
 	}
 }
