@@ -126,3 +126,5 @@ several repositories per profile (3-2-1).
 - Stage 6 (item 1): single-instance guard per settings file and a rotating, secret-filtered log file (`logs/vaultic.log`) with a Diagnostics section in Settings.
 
 - Stage 6 (item 2): live round-trip tests against SeaweedFS (S3), rest-server and Azurite; fixed the empty Azure access-tier header. See docs/LIVE_TESTS.md.
+
+- Stage 6 (item 3): 40-minute in-process soak test (807 backups, 201 exact restores, 80 prune/check), no leak. See docs/SOAK.md.
