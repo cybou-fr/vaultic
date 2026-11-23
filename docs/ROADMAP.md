@@ -122,3 +122,5 @@ Bandwidth limit and process priority, exclusion presets, snapshot tags and
 notes, search across snapshots, repository key management, restore to the
 original location with a conflict policy, mail / webhook notifications,
 several repositories per profile (3-2-1).
+
+- Stage 6 (item 1): single-instance guard per settings file and a rotating, secret-filtered log file (`logs/vaultic.log`) with a Diagnostics section in Settings.

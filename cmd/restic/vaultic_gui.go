@@ -176,6 +176,20 @@ func vaulticRestoreTarget(target string) (string, error) {
 }
 
 func vaulticMain(startHidden bool) {
+	// One Vaultic per settings file: a second launch asks the first to show
+	// itself and leaves.
+	instance, running, instanceErr := vaulticAcquireInstance(vaulticInstanceKey(vaulticSettingsPath()))
+	if running {
+		return
+	}
+	if instance != nil {
+		defer instance.Release()
+	}
+	fileLog := newVaulticLogFile(vaulticLogDir(vaulticSettingsPath()))
+	defer fileLog.RecoverAndRepanic()
+	if instanceErr != nil {
+		fileLog.Write("warn", "single-instance guard unavailable: "+instanceErr.Error())
+	}
 	a := app.NewWithID("fr.cybou.vaultic")
 	a.SetIcon(vaulticAppIcon())
 	a.Settings().SetTheme(&vaulticVisualTheme{})
@@ -186,6 +200,7 @@ func vaulticMain(startHidden bool) {
 	// Choose the language before any text is built.
 	vaulticSetLanguage(vaulticResolveLanguage(saved.Language, string(lang.SystemLocale())))
 	vaulticLocalizeTables()
+	fileLog.Start(vaulticLanguage())
 	w.SetTitle(vaulticT("Vaultic — sauvegardes chiffrées"))
 	initialProfile := saved.migrateBackupProfiles()
 	vaulticPrepareLoadedSettings(&saved)
@@ -202,7 +217,10 @@ func vaulticMain(startHidden bool) {
 	panel := newVaulticStatusPanel(func() { runner.RequestCancel() })
 	status := panel.Status
 	logView := newVaulticLogView()
-	appendLog := logView.Append
+	appendLog := func(message string) {
+		logView.Append(message)
+		fileLog.Info(message)
+	}
 	persist := func(depots []vaulticDepot, active string) error {
 		if settingsErr != nil {
 			return settingsErr
@@ -503,7 +521,11 @@ func vaulticMain(startHidden bool) {
 			}
 		},
 	})
-	settingsPage := vaulticSettingsPage(background.Content, languageUI.Content, updateUI.Content)
+	diagnosticsUI := newVaulticDiagnosticsController(vaulticDiagnosticsHooks{
+		Dir:  fileLog.Dir(),
+		Open: func(dir string) { _ = a.OpenURL(vaulticFileURL(dir)) },
+	})
+	settingsPage := vaulticSettingsPage(background.Content, languageUI.Content, updateUI.Content, diagnosticsUI.Content)
 
 	pages := []fyne.CanvasObject{overviewPage, backupPage, snapshotPage, storagePage, checkPage, journalPage, repositoriesPage, settingsPage}
 	stopFocusFollow = vaulticKeepFocusVisible(w, append([]*container.Scroll{overviewPage, storagePage, checkPage, repositoriesPage, settingsPage}, backupScrolls...))
@@ -564,10 +586,15 @@ func vaulticMain(startHidden bool) {
 	if !(startHidden && tray.Installed()) {
 		reveal()
 	}
+	if instance != nil {
+		// A later launch brings this window forward, even from the tray.
+		instance.OnShow(func() { fyne.Do(reveal) })
+	}
 	if settingsErr != nil {
 		dialog.ShowError(fmt.Errorf(vaulticT("Enregistrement des préférences désactivé pour cette session : %w"), settingsErr), w)
 	}
 	a.Run()
+	fileLog.Info("Vaultic stopped")
 }
 
 func vaulticVerifyDepot(ctx context.Context, g global.Options) error {

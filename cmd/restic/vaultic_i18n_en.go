@@ -850,5 +850,9 @@ var vaulticEnglish = map[string]string{
 	"Éléments parcourus : %d\nCorrespondances détectées : %d\n":                                         "Items scanned: %d\nMatches detected: %d\n",
 	"Événements de cette session":                                                                       "Events of this session",
 	"… %d autres modifications non affichées.\n":                                                        "… %d more changes not shown.\n",
-	"… et %d autre(s)\n": "… and %d more\n",
+	"… et %d autre(s)\n":             "… and %d more\n",
+	"Diagnostic":                     "Diagnostics",
+	"Journaux : ":                    "Logs: ",
+	"Ouvrir le dossier des journaux": "Open the logs folder",
+	"Les journaux contiennent l'activité de Vaultic (jamais les mots de passe) et sont limités à 5 fichiers de 1 Mio. Joignez-les à un rapport de problème.": "The logs contain Vaultic's activity (never passwords) and are limited to 5 files of 1 MiB. Attach them to a problem report.",
 }

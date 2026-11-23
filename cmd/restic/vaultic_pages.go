@@ -207,7 +207,7 @@ func vaulticActivityPage(logs fyne.CanvasObject, clear func()) fyne.CanvasObject
 	)
 }
 
-func vaulticSettingsPage(background, language, update fyne.CanvasObject) *container.Scroll {
+func vaulticSettingsPage(background, language, update, diagnostics fyne.CanvasObject) *container.Scroll {
 	return container.NewVScroll(container.NewPadded(container.NewVBox(
 		vaulticHeading(vaulticT("Paramètres"), 26),
 		vaulticSurface(container.NewVBox(
@@ -217,6 +217,10 @@ func vaulticSettingsPage(background, language, update fyne.CanvasObject) *contai
 		vaulticSurface(container.NewVBox(
 			vaulticHeading(vaulticT("Arrière-plan"), 19),
 			background,
+		)),
+		vaulticSurface(container.NewVBox(
+			vaulticHeading(vaulticT("Diagnostic"), 19),
+			diagnostics,
 		)),
 		vaulticSurface(container.NewVBox(
 			vaulticHeading(vaulticT("À propos de Vaultic"), 19),
